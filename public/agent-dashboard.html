@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>cbank Support — Agent Dashboard</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a; }
+  #app { display: flex; height: 100vh; }
+
+  #sidebar { width: 320px; border-right: 1px solid #e2e6ee; display: flex; flex-direction: column; background: #fff; }
+  #sidebar header { padding: 18px; background: #0b3d91; color: #fff; }
+  #sidebar header .title { font-weight: 800; font-size: 16px; }
+  #sidebar header .subtitle { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+  #manage-faqs-btn { margin-top: 10px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4); color: #fff; font-size: 12px; font-weight: 600; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  #manage-faqs-btn:hover { background: rgba(255,255,255,0.25); }
+
+  #filter-tabs { display: flex; border-bottom: 1px solid #e2e6ee; background: #fafbfd; }
+  .filter-tab { flex: 1; text-align: center; padding: 10px 4px; font-size: 12.5px; font-weight: 600; color: #888; cursor: pointer; border-bottom: 2px solid transparent; }
+  .filter-tab:hover { color: #0b3d91; }
+  .filter-tab.active { color: #0b3d91; border-bottom-color: #0b3d91; }
+
+  #session-list { flex: 1; overflow-y: auto; }
+  .session-item { padding: 14px 18px; border-bottom: 1px solid #f0f2f7; cursor: pointer; position: relative; }
+  .session-item:hover { background: #f7f9fd; }
+  .session-item.active { background: #eef2fb; }
+  .session-item .name { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; justify-content: space-between; }
+  .session-item .preview { font-size: 12.5px; color: #777; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-item .subline { font-size: 11px; color: #9aa1ad; margin-top: 3px; }
+  .session-item .status-closed { font-size: 11px; color: #b45; text-transform: uppercase; letter-spacing: 0.5px; }
+  .channel-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 1px 6px; border-radius: 4px; margin-right: 6px; vertical-align: middle; }
+  .channel-whatsapp { background: #e7f8ee; color: #1e8a5f; }
+  .unread-dot { background: #e0263a; color: #fff; font-size: 11px; font-weight: 700; min-width: 18px; height: 18px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; }
+  #empty-list { padding: 24px 18px; font-size: 13px; color: #999; }
+
+  #main { flex: 1; display: flex; flex-direction: column; background: #f4f6fb; }
+  #main-header { padding: 16px 24px; background: #fff; border-bottom: 1px solid #e2e6ee; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  #main-header .title { font-weight: 700; font-size: 15px; }
+  #main-header .meta { font-size: 12.5px; color: #888; margin-top: 2px; }
+  #main-header .meta-line { margin-top: 2px; }
+  #close-btn { background: #fff; border: 1px solid #dcdfe6; border-radius: 8px; padding: 7px 14px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+  #close-btn:hover { background: #f4f6fb; }
+  #close-btn:disabled { color: #aaa; cursor: not-allowed; }
+
+  .transcript-status { font-size: 12px; padding: 8px 24px; border-bottom: 1px solid #e2e6ee; }
+  .transcript-status.sent { background: #eef9f0; color: #1e7d3a; }
+  .transcript-status.sending { background: #fff8e6; color: #8a6d1f; }
+  .transcript-status.error { background: #fdeeee; color: #b3261e; }
+  .transcript-status.not-configured, .transcript-status.skipped { background: #f2f3f7; color: #666; }
+
+  #messages { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 65%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.4; white-space: pre-line; }
+  .msg-client { align-self: flex-start; background: #fff; border: 1px solid #e2e6ee; border-bottom-left-radius: 4px; }
+  .msg-agent { align-self: flex-end; background: #0b3d91; color: #fff; border-bottom-right-radius: 4px; }
+  .msg-bot { align-self: flex-start; background: #eaf6f0; border: 1px solid #c9ebd9; border-bottom-left-radius: 4px; }
+  .msg-bot .msg-label { display: block; font-size: 10.5px; font-weight: 700; color: #1e8a5f; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; }
+  .msg-system { align-self: center; color: #999; font-style: italic; font-size: 12px; white-space: normal; }
+
+  #typing-indicator { font-size: 12px; color: #999; padding: 0 24px 4px; display: none; }
+
+  #inputbar { display: flex; gap: 10px; padding: 14px 24px; background: #fff; border-top: 1px solid #e2e6ee; }
+  #msg-input { flex: 1; border: 1px solid #dcdfe6; border-radius: 20px; padding: 10px 16px; font-size: 13.5px; outline: none; }
+  #msg-input:focus { border-color: #0b3d91; }
+  #msg-input:disabled { background: #f4f6fb; }
+  #send-btn { background: #0b3d91; color: #fff; border: none; border-radius: 20px; padding: 10px 20px; font-weight: 600; font-size: 13.5px; cursor: pointer; }
+  #send-btn:disabled { background: #b7c2e0; cursor: not-allowed; }
+
+  #placeholder { flex: 1; display: flex; align-items: center; justify-content: center; color: #999; font-size: 14px; }
+
+  /* ---- FAQ manager modal ---- */
+  #faq-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(20,26,40,0.45); z-index: 1000; align-items: center; justify-content: center; }
+  #faq-modal-overlay.open { display: flex; }
+  #faq-modal { width: 640px; max-width: calc(100vw - 40px); max-height: calc(100vh - 60px); background: #fff; border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+  #faq-modal-header { background: #0b3d91; color: #fff; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; }
+  #faq-modal-header .title { font-weight: 700; font-size: 15px; }
+  #faq-modal-header .subtitle { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+  #faq-modal-close { background: transparent; border: none; color: #fff; font-size: 22px; cursor: pointer; line-height: 1; }
+  #faq-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; background: #f7f9fd; }
+  #faq-add-btn { margin-top: 4px; background: #0b3d91; color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-weight: 600; font-size: 13px; cursor: pointer; }
+  #faq-add-btn:hover { background: #092f70; }
+
+  .faq-card { background: #fff; border: 1px solid #e2e6ee; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .faq-card .faq-view-question { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+  .faq-card .faq-view-answer { font-size: 12.5px; color: #666; white-space: pre-line; max-height: 60px; overflow: hidden; text-overflow: ellipsis; }
+  .faq-card .faq-actions { margin-top: 8px; display: flex; gap: 8px; }
+  .faq-card .faq-actions button { font-size: 12px; border-radius: 6px; padding: 5px 10px; cursor: pointer; border: 1px solid #dcdfe6; background: #fff; }
+  .faq-card .faq-actions button:hover { background: #f4f6fb; }
+  .faq-card .faq-actions .delete-btn { color: #b3261e; border-color: #f3c9c5; }
+  .faq-card .faq-actions .delete-btn:hover { background: #fdeeee; }
+
+  .faq-edit-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 6px; }
+  .faq-edit-col label { font-size: 10.5px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin: 6px 0 3px; }
+  .faq-edit-col input, .faq-edit-col textarea { width: 100%; border: 1px solid #dcdfe6; border-radius: 6px; padding: 6px 8px; font-size: 12px; font-family: inherit; outline: none; resize: vertical; }
+  .faq-edit-col input:focus, .faq-edit-col textarea:focus { border-color: #0b3d91; }
+  .faq-edit-col textarea { min-height: 70px; }
+  .faq-edit-actions { margin-top: 10px; display: flex; gap: 8px; }
+  .faq-edit-actions .save-btn { background: #0b3d91; color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .faq-edit-actions .save-btn:hover { background: #092f70; }
+  .faq-edit-actions .cancel-btn { background: #fff; border: 1px solid #dcdfe6; border-radius: 6px; padding: 7px 14px; font-size: 12.5px; cursor: pointer; }
+  .faq-edit-actions .cancel-btn:hover { background: #f4f6fb; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <header>
+      <div class="title">cbank Support</div>
+      <div class="subtitle">Agent dashboard</div>
+      <button id="manage-faqs-btn" type="button">❓ Gestionar preguntas frecuentes</button>
+    </header>
+    <div id="filter-tabs">
+      <div class="filter-tab active" data-filter="all">Todas</div>
+      <div class="filter-tab" data-filter="open">Activas</div>
+      <div class="filter-tab" data-filter="closed">Cerradas</div>
+    </div>
+    <div id="session-list">
+      <div id="empty-list">No conversations yet. Open the widget demo page to start one.</div>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="placeholder">Select a conversation on the left to start replying.</div>
+  </div>
+</div>
+
+<div id="faq-modal-overlay">
+  <div id="faq-modal">
+    <div id="faq-modal-header">
+      <div>
+        <div class="title">Preguntas frecuentes del bot</div>
+        <div class="subtitle">Visibles en el widget del cliente en ES / EN / PT</div>
+      </div>
+      <button id="faq-modal-close" aria-label="Cerrar">×</button>
+    </div>
+    <div id="faq-modal-body">
+      <div id="faq-list"></div>
+      <button id="faq-add-btn" type="button">+ Agregar pregunta</button>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  let sessions = [];
+  let activeSessionId = null;
+  let filter = "all"; // all | open | closed
+
+  let faqs = [];
+  let editingFaqId = null; // id being edited, or "new" for the add form, or null
+  let editingDraft = null; // { question:{es,en,pt}, answer:{es,en,pt} } while editing/creating
+
+  const sessionListEl = document.getElementById("session-list");
+  const mainEl = document.getElementById("main");
+  const filterTabs = document.querySelectorAll(".filter-tab");
+  const faqModalOverlay = document.getElementById("faq-modal-overlay");
+  const faqListEl = document.getElementById("faq-list");
+
+  filterTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      filter = tab.dataset.filter;
+      filterTabs.forEach((t) => t.classList.toggle("active", t === tab));
+      renderSessionList();
+    });
+  });
+
+  socket.on("connect", () => {
+    socket.emit("agent:join");
+  });
+
+  socket.on("sessions:list", (list) => {
+    sessions = list;
+    renderSessionList();
+    if (activeSessionId) renderMainHeader(); // keep header (location/transcript status) fresh
+  });
+
+  socket.on("agent:history", ({ sessionId, messages }) => {
+    if (sessionId !== activeSessionId) return;
+    renderConversation(messages);
+  });
+
+  socket.on("message:new", (message) => {
+    const messagesEl = document.getElementById("messages");
+    if (messagesEl && activeSessionId) {
+      appendMessage(message);
+    }
+  });
+
+  socket.on("typing", (data) => {
+    const el = document.getElementById("typing-indicator");
+    if (el && data.from === "client") {
+      el.style.display = data.isTyping ? "block" : "none";
+    }
+  });
+
+  socket.on("session:transcript-status", (status) => {
+    const session = sessions.find((s) => s.id === activeSessionId);
+    if (session) {
+      session.transcriptEmail = status;
+      renderMainHeader();
+    }
+  });
+
+  socket.on("faqs:list", (list) => {
+    faqs = list;
+    // Any FAQ open in the editor that just got deleted elsewhere loses its draft.
+    if (editingFaqId && editingFaqId !== "new" && !faqs.some((f) => f.id === editingFaqId)) {
+      editingFaqId = null;
+      editingDraft = null;
+    }
+    renderFaqManager();
+  });
+
+  function filteredSessions() {
+    if (filter === "open") return sessions.filter((s) => s.status !== "closed");
+    if (filter === "closed") return sessions.filter((s) => s.status === "closed");
+    return sessions;
+  }
+
+  function renderSessionList() {
+    const list = filteredSessions();
+
+    if (list.length === 0) {
+      sessionListEl.innerHTML = '<div id="empty-list">No conversations here yet.</div>';
+      return;
+    }
+
+    sessionListEl.innerHTML = "";
+    list.forEach((s) => {
+      const item = document.createElement("div");
+      item.className = "session-item" + (s.id === activeSessionId ? " active" : "");
+      item.onclick = () => selectSession(s.id);
+
+      const unreadBadge = s.unread > 0 ? `<span class="unread-dot">${s.unread > 9 ? "9+" : s.unread}</span>` : "";
+      const closedTag = s.status === "closed" ? `<span class="status-closed">Closed</span>` : "";
+      const location = s.location && s.location.country ? `${escapeHtml(s.location.city)}, ${escapeHtml(s.location.country)}` : "";
+      const channelTag = s.channel === "whatsapp" ? `<span class="channel-tag channel-whatsapp">WhatsApp</span>` : "";
+
+      item.innerHTML = `
+        <div class="name"><span>${escapeHtml(s.name)}</span>${unreadBadge}</div>
+        <div class="preview">${escapeHtml(s.lastMessage || "No messages yet")}</div>
+        <div class="subline">${channelTag}${location}</div>
+        ${closedTag}
+      `;
+      sessionListEl.appendChild(item);
+    });
+  }
+
+  function selectSession(sessionId) {
+    activeSessionId = sessionId;
+    socket.emit("agent:watch", sessionId);
+    renderSessionList();
+    renderMainPanel();
+  }
+
+  function transcriptStatusLine(session) {
+    if (!session.transcriptEmail) return "";
+    const te = session.transcriptEmail;
+    if (te.status === "sending") {
+      return `<div class="transcript-status sending">Enviando copia de la conversación por correo…</div>`;
+    }
+    if (te.status === "sent") {
+      return `<div class="transcript-status sent">Copia enviada a ${escapeHtml(session.email)} — ${new Date(te.sentAt).toLocaleString()}</div>`;
+    }
+    if (te.status === "error") {
+      return `<div class="transcript-status error">No se pudo enviar la copia por correo (${escapeHtml(te.error || "error desconocido")}).</div>`;
+    }
+    if (te.status === "not-configured") {
+      return `<div class="transcript-status not-configured">Correo no configurado en el servidor (ver .env.example) — no se envió copia.</div>`;
+    }
+    if (te.status === "skipped") {
+      return `<div class="transcript-status skipped">No se envió copia: el cliente no dejó un email.</div>`;
+    }
+    return "";
+  }
+
+  function renderMainHeader() {
+    const headerHost = document.getElementById("main-header-host");
+    if (!headerHost) return;
+    const session = sessions.find((s) => s.id === activeSessionId);
+    headerHost.innerHTML = mainHeaderHtml(session);
+
+    document.getElementById("close-btn").onclick = () => {
+      socket.emit("agent:close", activeSessionId);
+    };
+  }
+
+  function mainHeaderHtml(session) {
+    const contactLine = [
+      session && session.email ? escapeHtml(session.email) : "Sin email",
+      session && session.whatsapp ? "WhatsApp " + escapeHtml(session.whatsapp) : "",
+    ].filter(Boolean).join(" · ");
+
+    const locationLine = session && session.location
+      ? `${escapeHtml(session.location.city || "")}, ${escapeHtml(session.location.country || "")} · IP ${escapeHtml(session.location.ip || "")}`
+      : "";
+
+    const deviceLine = session && session.device ? escapeHtml(session.device) : "";
+
+    const channelTag = session && session.channel === "whatsapp" ? `<span class="channel-tag channel-whatsapp">WhatsApp</span>` : "";
+
+    return `
+      <div id="main-header">
+        <div>
+          <div class="title">${channelTag}${escapeHtml(session ? session.name : "Conversation")}</div>
+          <div class="meta meta-line">${contactLine}</div>
+          <div class="meta meta-line">${locationLine}${deviceLine ? " · " + deviceLine : ""}</div>
+        </div>
+        <button id="close-btn" ${session && session.status === "closed" ? "disabled" : ""}>
+          ${session && session.status === "closed" ? "Closed" : "Close conversation"}
+        </button>
+      </div>
+      ${session ? transcriptStatusLine(session) : ""}
+    `;
+  }
+
+  function renderMainPanel() {
+    const session = sessions.find((s) => s.id === activeSessionId);
+
+    mainEl.innerHTML = `
+      <div id="main-header-host">${mainHeaderHtml(session)}</div>
+      <div id="messages"></div>
+      <div id="typing-indicator">Client is typing…</div>
+      <div id="inputbar">
+        <input id="msg-input" type="text" placeholder="Type a reply…" autocomplete="off" ${session && session.status === "closed" ? "disabled" : ""} />
+        <button id="send-btn" ${session && session.status === "closed" ? "disabled" : ""}>Send</button>
+      </div>
+    `;
+
+    document.getElementById("close-btn").onclick = () => {
+      socket.emit("agent:close", activeSessionId);
+    };
+
+    const input = document.getElementById("msg-input");
+    const sendBtn = document.getElementById("send-btn");
+
+    function send() {
+      const text = input.value;
+      if (!text.trim()) return;
+      socket.emit("agent:message", { sessionId: activeSessionId, text });
+      input.value = "";
+    }
+
+    sendBtn.onclick = send;
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        send();
+      } else {
+        socket.emit("agent:typing", { sessionId: activeSessionId, isTyping: true });
+      }
+    });
+  }
+
+  function renderConversation(messages) {
+    const messagesEl = document.getElementById("messages");
+    if (!messagesEl) return;
+    messagesEl.innerHTML = "";
+    messages.forEach(appendMessage);
+  }
+
+  function appendMessage(message) {
+    const messagesEl = document.getElementById("messages");
+    if (!messagesEl) return;
+    const row = document.createElement("div");
+    row.className = "msg msg-" + message.from;
+    if (message.from === "bot") {
+      row.innerHTML = '<span class="msg-label">cbank Bot</span>' + escapeHtml(message.text);
+    } else {
+      row.textContent = message.text;
+    }
+    messagesEl.appendChild(row);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // ---- FAQ manager ------------------------------------------------------
+  document.getElementById("manage-faqs-btn").addEventListener("click", () => {
+    faqModalOverlay.classList.add("open");
+    renderFaqManager();
+  });
+  document.getElementById("faq-modal-close").addEventListener("click", () => {
+    faqModalOverlay.classList.remove("open");
+    editingFaqId = null;
+    editingDraft = null;
+  });
+  faqModalOverlay.addEventListener("click", (e) => {
+    if (e.target === faqModalOverlay) faqModalOverlay.classList.remove("open");
+  });
+  document.getElementById("faq-add-btn").addEventListener("click", () => {
+    editingFaqId = "new";
+    editingDraft = { question: { es: "", en: "", pt: "" }, answer: { es: "", en: "", pt: "" } };
+    renderFaqManager();
+  });
+
+  function blankFaqIfMissing(faq) {
+    return {
+      question: { es: faq?.question?.es || "", en: faq?.question?.en || "", pt: faq?.question?.pt || "" },
+      answer: { es: faq?.answer?.es || "", en: faq?.answer?.en || "", pt: faq?.answer?.pt || "" },
+    };
+  }
+
+  function faqEditFormHtml(id, draft) {
+    const langs = [["es", "Español"], ["en", "English"], ["pt", "Português"]];
+    const questionCols = langs
+      .map(
+        ([code, label]) => `
+        <div class="faq-edit-col">
+          <label>Pregunta (${label})</label>
+          <input type="text" data-field="question" data-lang="${code}" value="${escapeAttr(draft.question[code])}" />
+        </div>`
+      )
+      .join("");
+    const answerCols = langs
+      .map(
+        ([code, label]) => `
+        <div class="faq-edit-col">
+          <label>Respuesta (${label})</label>
+          <textarea data-field="answer" data-lang="${code}">${escapeHtml(draft.answer[code])}</textarea>
+        </div>`
+      )
+      .join("");
+
+    return `
+      <div class="faq-edit-grid">${questionCols}</div>
+      <div class="faq-edit-grid">${answerCols}</div>
+      <div class="faq-edit-actions">
+        <button type="button" class="save-btn" data-action="save" data-id="${id}">Guardar</button>
+        <button type="button" class="cancel-btn" data-action="cancel">Cancelar</button>
+      </div>
+    `;
+  }
+
+  function renderFaqManager() {
+    if (!faqModalOverlay.classList.contains("open")) return;
+
+    faqListEl.innerHTML = "";
+
+    faqs.forEach((faq) => {
+      const card = document.createElement("div");
+      card.className = "faq-card";
+
+      if (editingFaqId === faq.id) {
+        card.innerHTML = faqEditFormHtml(faq.id, editingDraft);
+      } else {
+        const previewQuestion = faq.question.es || faq.question.en || faq.question.pt || "(sin texto)";
+        const previewAnswer = faq.answer.es || faq.answer.en || faq.answer.pt || "";
+        card.innerHTML = `
+          <div class="faq-view-question">${escapeHtml(previewQuestion)}</div>
+          <div class="faq-view-answer">${escapeHtml(previewAnswer)}</div>
+          <div class="faq-actions">
+            <button type="button" data-action="edit" data-id="${faq.id}">Editar</button>
+            <button type="button" class="delete-btn" data-action="delete" data-id="${faq.id}">Eliminar</button>
+          </div>
+        `;
+      }
+      faqListEl.appendChild(card);
+    });
+
+    if (editingFaqId === "new") {
+      const card = document.createElement("div");
+      card.className = "faq-card";
+      card.innerHTML = faqEditFormHtml("new", editingDraft);
+      faqListEl.appendChild(card);
+    }
+
+    if (faqs.length === 0 && editingFaqId !== "new") {
+      const empty = document.createElement("div");
+      empty.style.cssText = "font-size:13px;color:#999;padding:8px 2px;";
+      empty.textContent = "No hay preguntas frecuentes todavía.";
+      faqListEl.appendChild(empty);
+    }
+  }
+
+  faqListEl.addEventListener("click", (e) => {
+    const editBtn = e.target.closest('[data-action="edit"]');
+    const deleteBtn = e.target.closest('[data-action="delete"]');
+    const saveBtn = e.target.closest('[data-action="save"]');
+    const cancelBtn = e.target.closest('[data-action="cancel"]');
+
+    if (editBtn) {
+      const faq = faqs.find((f) => f.id === editBtn.dataset.id);
+      editingFaqId = faq.id;
+      editingDraft = blankFaqIfMissing(faq);
+      renderFaqManager();
+      return;
+    }
+
+    if (deleteBtn) {
+      if (confirm("¿Eliminar esta pregunta frecuente? Esta acción no se puede deshacer.")) {
+        socket.emit("agent:faqs:delete", deleteBtn.dataset.id);
+      }
+      return;
+    }
+
+    if (cancelBtn) {
+      editingFaqId = null;
+      editingDraft = null;
+      renderFaqManager();
+      return;
+    }
+
+    if (saveBtn) {
+      const card = saveBtn.closest(".faq-card");
+      const question = { es: "", en: "", pt: "" };
+      const answer = { es: "", en: "", pt: "" };
+      card.querySelectorAll("[data-field]").forEach((el) => {
+        const field = el.dataset.field;
+        const lang = el.dataset.lang;
+        (field === "question" ? question : answer)[lang] = el.value.trim();
+      });
+
+      if (!(question.es || question.en || question.pt) || !(answer.es || answer.en || answer.pt)) {
+        alert("Completa al menos un idioma para la pregunta y uno para la respuesta.");
+        return;
+      }
+
+      const id = saveBtn.dataset.id === "new" ? undefined : saveBtn.dataset.id;
+      socket.emit("agent:faqs:save", { id, question, answer });
+      editingFaqId = null;
+      editingDraft = null;
+      // Optimistic close; the incoming faqs:list broadcast will re-render with the saved copy.
+      renderFaqManager();
+    }
+  });
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str || "";
+    return div.innerHTML;
+  }
+
+  function escapeAttr(str) {
+    return escapeHtml(str).replace(/"/g, "&quot;");
+  }
+</script>
+</body>
+</html>

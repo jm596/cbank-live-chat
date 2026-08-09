@@ -1,0 +1,792 @@
+/**
+ * cbank Live Chat — server
+ *
+ * Express + Socket.io backend that connects the client-facing chat widget
+ * (public/widget.js) with the support agent dashboard (public/agent-dashboard.html).
+ *
+ * In-memory only: sessions and messages live in process memory and reset on
+ * restart. Swap the `sessions` Map for a real database (Postgres, Redis, etc.)
+ * before going to production — see README.md "Going to production".
+ *
+ * Also handles, on top of chat routing:
+ *  - IP-based geolocation (country/city) for each visitor
+ *  - Emailing a transcript to the visitor when an agent closes the conversation
+ *  - A WhatsApp Business (Meta Cloud API) channel that reuses the same FAQ
+ *    bot content and lands in the same agent dashboard as web chat sessions
+ * All of these features degrade gracefully when not configured (see .env.example).
+ */
+
+require("dotenv").config();
+
+const express = require("express");
+const http = require("http");
+const https = require("https");
+const path = require("path");
+const { Server } = require("socket.io");
+const { v4: uuidv4 } = require("uuid");
+const nodemailer = require("nodemailer");
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*" }, // tighten this to cbank's real domain(s) in production
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json()); // needed to parse incoming WhatsApp webhook POST bodies
+app.use(express.static(path.join(__dirname, "public")));
+
+// ---- In-memory session store -----------------------------------------
+// sessions: Map<sessionId, {
+//   id, name, email, whatsapp, device, locale, channel: "web" | "whatsapp",
+//   location: { ip, country, city },
+//   status, createdAt, closedAt, messages: [], unread,
+//   transcriptEmail: { status, sentAt?, error?, reason? } | null
+// }>
+const sessions = new Map();
+
+// Index from WhatsApp phone number -> sessionId, so an incoming message from
+// a returning number resumes the same conversation instead of starting a new
+// one every time (mirrors what localStorage does for the web widget).
+const whatsappSessions = new Map();
+
+// ---- FAQ bot store (seeded from the real cbank.ws / cbank.ws/support FAQ
+// content, translated to es/en/pt) --------------------------------------
+// In-memory, like everything else here — resets on restart. Agents manage
+// this list live from the dashboard (add/edit/delete), broadcast to every
+// connected client and agent via `faqs:list` so open widgets refresh too.
+let faqs = [
+  {
+    id: uuidv4(),
+    question: {
+      es: "¿Qué es la CBank Card y cómo funciona?",
+      en: "What is the CBank Card and how does it work?",
+      pt: "O que é o CBank Card e como funciona?",
+    },
+    answer: {
+      es: "La CBank Card es una tarjeta Visa respaldada por cripto que te permite gastar tus USDC y USDT en cualquier lugar donde se acepte Visa. Al hacer una compra, el comercio recibe el pago como con una tarjeta tradicional.\n\nFunciones clave:\n• Admite USDC y USDT como respaldo\n• CBank Card no cobra comisiones de gas ni de conversión (aún podrías pagar comisiones de red directamente)\n• Funciona donde se acepte Visa, en línea y en tiendas físicas\n• No requiere verificación de crédito",
+      en: "CBank Card is a crypto-backed Visa card that lets you spend your USDC and USDT anywhere Visa is accepted. When you make a purchase, the merchant gets paid just like with a traditional card.\n\nKey features:\n• Supports USDC and USDT for collateral\n• No gas or conversion fees are charged by CBank Card (you may still pay network gas fees directly)\n• Works anywhere Visa is accepted, online and in-store\n• No credit check required",
+      pt: "O CBank Card é um cartão Visa lastreado em cripto que permite gastar seus USDC e USDT em qualquer lugar que aceite Visa. Ao fazer uma compra, o comerciante recebe o pagamento como em um cartão tradicional.\n\nPrincipais recursos:\n• Aceita USDC e USDT como garantia\n• O CBank Card não cobra taxas de gas nem de conversão (você ainda pode pagar taxas de gas da rede diretamente)\n• Funciona em qualquer lugar que aceite Visa, online e em lojas físicas\n• Não exige verificação de crédito",
+    },
+  },
+  {
+    id: uuidv4(),
+    question: {
+      es: "¿Cómo creo una cuenta?",
+      en: "How do I create an account?",
+      pt: "Como crio uma conta?",
+    },
+    answer: {
+      es: "Crear una cuenta de CBank Card es rápido y sencillo:\n• Descarga la app de CBank Card\n• Ingresa la información solicitada y sigue las indicaciones\n• Completa la verificación KYC para acceder a todas las funciones\n\n¡Una vez verificado, ya puedes usar tu CBank Card!",
+      en: "Creating a CBank Card account is quick and easy:\n• Download the CBank Card app\n• Enter the requested information and follow the prompts\n• Complete KYC verification to access all features\n\nOnce verified, you can start using your CBank Card!",
+      pt: "Criar uma conta CBank Card é rápido e fácil:\n• Baixe o aplicativo CBank Card\n• Insira as informações solicitadas e siga as instruções\n• Complete a verificação KYC para acessar todos os recursos\n\nDepois de verificado, você já pode usar seu CBank Card!",
+    },
+  },
+  {
+    id: uuidv4(),
+    question: {
+      es: "¿Cómo verifico mi identidad?",
+      en: "How do I verify my identity?",
+      pt: "Como verifico minha identidade?",
+    },
+    answer: {
+      es: "Para usar tu CBank Card debes completar la verificación KYC. Después de iniciar sesión se te pedirá:\n• Nombre legal completo\n• Correo electrónico\n• Fecha de nacimiento\n• Número de SSN/identificación nacional\n• Una identificación oficial vigente (pasaporte, licencia de conducir o cédula/DNI)\n• Una selfie para confirmar tu identidad\n\nUna vez enviada, tu verificación será revisada; si es aprobada, podrás usar tu CBank Card de inmediato.",
+      en: "To use your CBank Card you must complete KYC verification. After logging in you'll be asked for:\n• Full legal name\n• Email\n• Date of birth\n• SSN/national ID number\n• A valid government-issued ID (passport, driver's license, or national ID)\n• A selfie to confirm your identity\n\nOnce submitted, your verification will be reviewed — if approved, you can start using your CBank Card right away.",
+      pt: "Para usar seu CBank Card, você deve concluir a verificação KYC. Depois de fazer login, será solicitado:\n• Nome legal completo\n• E-mail\n• Data de nascimento\n• Número de SSN/identificação nacional\n• Um documento de identidade oficial válido (passaporte, carteira de motorista ou identidade nacional)\n• Uma selfie para confirmar sua identidade\n\nApós o envio, sua verificação será analisada — se aprovada, você já pode começar a usar seu CBank Card.",
+    },
+  },
+  {
+    id: uuidv4(),
+    question: {
+      es: "¿Cuánto tarda el proceso de verificación KYC?",
+      en: "How long does the KYC verification process take?",
+      pt: "Quanto tempo leva o processo de verificação KYC?",
+    },
+    answer: {
+      es: "La verificación KYC normalmente toma solo unos segundos. En algunos casos puede tardar hasta 72 horas si se necesita verificación adicional. Si se retrasa más de 72 horas, por favor contacta a soporte.",
+      en: "KYC verification typically takes just a few seconds. In some cases it may take up to 72 hours if additional verification is needed. If it's delayed more than 72 hours, please contact support.",
+      pt: "A verificação KYC geralmente leva apenas alguns segundos. Em alguns casos, pode levar até 72 horas se for necessária verificação adicional. Se demorar mais de 72 horas, entre em contato com o suporte.",
+    },
+  },
+  {
+    id: uuidv4(),
+    question: {
+      es: "¿Qué hago si falla mi verificación KYC?",
+      en: "What should I do if my KYC verification fails?",
+      pt: "O que faço se minha verificação KYC falhar?",
+    },
+    answer: {
+      es: "• Revisa si hay errores: asegúrate de que los documentos enviados sean claros y válidos\n• Vuelve a tomarte la selfie con buena iluminación y sin obstrucciones\n• Contacta a soporte si crees que fue un error",
+      en: "• Check for errors — make sure your submitted documents are clear and valid\n• Retake your selfie with good lighting and no obstructions\n• Contact support if you believe it's a mistake",
+      pt: "• Verifique se há erros: garanta que os documentos enviados estejam nítidos e válidos\n• Tire a selfie novamente com boa iluminação e sem obstruções\n• Entre em contato com o suporte se acredita que houve um engano",
+    },
+  },
+  {
+    id: uuidv4(),
+    question: {
+      es: "¿Qué países son compatibles?",
+      en: "What countries are supported?",
+      pt: "Quais países são compatíveis?",
+    },
+    answer: {
+      es: "CBank Card está disponible actualmente en muchos estados de EE. UU., América Latina y el Caribe. No son elegibles residentes o ciudadanos de: Cuba, Venezuela, Nicaragua, Rusia, Corea del Norte, Siria, Irán, y las regiones de Crimea, Lugansk y Donetsk. Están trabajando activamente para expandirse a más países.",
+      en: "CBank Card is currently available in many U.S. states, Latin America, and the Caribbean. Residents/citizens of the following are not eligible: Cuba, Venezuela, Nicaragua, Russia, North Korea, Syria, Iran, and the regions of Crimea, Luhansk, and Donetsk. We're actively working on expanding to more countries.",
+      pt: "O CBank Card está atualmente disponível em muitos estados dos EUA, na América Latina e no Caribe. Residentes ou cidadãos dos seguintes locais não são elegíveis: Cuba, Venezuela, Nicarágua, Rússia, Coreia do Norte, Síria, Irã, e as regiões da Crimeia, Lugansk e Donetsk. Estamos trabalhando ativamente para expandir para mais países.",
+    },
+  },
+  {
+    id: uuidv4(),
+    question: {
+      es: "¿Dónde puedo usar mi CBank Card?",
+      en: "Where can I use my CBank Card?",
+      pt: "Onde posso usar meu CBank Card?",
+    },
+    answer: {
+      es: "En cualquier lugar donde se acepte Visa, tanto en línea como en persona, para tus compras diarias en todo el mundo.",
+      en: "Anywhere Visa is accepted — both online and in person, for everyday purchases worldwide.",
+      pt: "Em qualquer lugar que aceite Visa, tanto online quanto presencialmente, para suas compras do dia a dia em todo o mundo.",
+    },
+  },
+  {
+    id: uuidv4(),
+    question: {
+      es: "¿Hay algún costo?",
+      en: "Are there any fees?",
+      pt: "Existem taxas?",
+    },
+    answer: {
+      es: "CBank Card mantiene los costos bajos:\n• Comisión de depósito: 0% (depósito mínimo de $2 USD)\n• Cuota mensual de la cuenta: $0\n• Emisión de tarjeta virtual: $0\n• Tarjeta física: $0\n• Envío de la tarjeta: $0",
+      en: "CBank Card keeps fees low:\n• Deposit fee: 0% (minimum deposit $2 USD)\n• Monthly account fee: $0\n• Virtual card issuance: $0\n• Physical card: $0\n• Card shipping: $0",
+      pt: "O CBank Card mantém as taxas baixas:\n• Taxa de depósito: 0% (depósito mínimo de $2 USD)\n• Mensalidade da conta: $0\n• Emissão do cartão virtual: $0\n• Cartão físico: $0\n• Envio do cartão: $0",
+    },
+  },
+  {
+    id: uuidv4(),
+    question: {
+      es: "¿Cómo contacto a soporte?",
+      en: "How do I contact support?",
+      pt: "Como entro em contato com o suporte?",
+    },
+    answer: {
+      es: "Puedes escribirnos en cualquier momento a support@cbank.ws, o seguir chateando aquí mismo — un agente se sumará a esta conversación.",
+      en: "You can reach us anytime at support@cbank.ws, or just keep chatting here — an agent will join this conversation.",
+      pt: "Você pode nos contatar a qualquer momento em support@cbank.ws, ou continuar conversando aqui mesmo — um agente vai entrar nesta conversa.",
+    },
+  },
+];
+
+// ---- Email transcript templates (es/en/pt) ----------------------------
+const EMAIL_TEMPLATES = {
+  es: {
+    subject: (date) => `Copia de tu conversación con cbank Support — ${date}`,
+    intro: "Aquí tienes una copia de tu conversación con nuestro equipo de soporte:",
+    from: "cbank Support",
+  },
+  en: {
+    subject: (date) => `Your cbank Support conversation — ${date}`,
+    intro: "Here's a copy of your conversation with our support team:",
+    from: "cbank Support",
+  },
+  pt: {
+    subject: (date) => `Cópia da sua conversa com o Suporte cbank — ${date}`,
+    intro: "Aqui está uma cópia da sua conversa com nossa equipe de suporte:",
+    from: "Suporte cbank",
+  },
+};
+
+function sessionSummary(session) {
+  const lastMessage = session.messages[session.messages.length - 1];
+  return {
+    id: session.id,
+    name: session.name,
+    email: session.email,
+    whatsapp: session.whatsapp,
+    device: session.device,
+    channel: session.channel || "web",
+    location: session.location,
+    locale: session.locale,
+    status: session.status,
+    createdAt: session.createdAt,
+    closedAt: session.closedAt || null,
+    unread: session.unread || 0,
+    lastMessage: lastMessage ? lastMessage.text : "",
+    lastMessageAt: lastMessage ? lastMessage.at : session.createdAt,
+    transcriptEmail: session.transcriptEmail || null,
+  };
+}
+
+function broadcastSessionList() {
+  const list = Array.from(sessions.values())
+    .sort((a, b) => new Date(b.messages.at(-1)?.at || b.createdAt) - new Date(a.messages.at(-1)?.at || a.createdAt))
+    .map(sessionSummary);
+  io.to("agents").emit("sessions:list", list);
+}
+
+// ---- IP helpers ---------------------------------------------------------
+function getClientIp(socket) {
+  const forwarded = socket.handshake.headers["x-forwarded-for"];
+  let ip = forwarded ? forwarded.split(",")[0].trim() : socket.handshake.address;
+  if (ip && ip.startsWith("::ffff:")) ip = ip.slice(7);
+  return ip || "unknown";
+}
+
+function isLocalOrPrivateIp(ip) {
+  if (!ip || ip === "unknown") return true;
+  if (ip === "::1" || ip === "127.0.0.1") return true;
+  if (/^10\./.test(ip)) return true;
+  if (/^192\.168\./.test(ip)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
+  return false;
+}
+
+// ---- IP geolocation (free ip-api.com endpoint, cached per IP) ----------
+// Rate-limited to ~45 req/min on the free tier — fine for small/medium
+// traffic. Swap for a paid provider if you outgrow it.
+const geoCache = new Map();
+
+function geolocateIp(ip) {
+  return new Promise((resolve) => {
+    if (isLocalOrPrivateIp(ip)) {
+      return resolve({ ip, country: "Local/Unknown", city: "Local/Unknown" });
+    }
+    if (geoCache.has(ip)) return resolve(geoCache.get(ip));
+
+    const req = http.get(
+      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,city,query`,
+      { timeout: 4000 },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          try {
+            const parsed = JSON.parse(data);
+            const result =
+              parsed.status === "success"
+                ? { ip: parsed.query || ip, country: parsed.country || "Unknown", city: parsed.city || "Unknown" }
+                : { ip, country: "Unknown", city: "Unknown" };
+            geoCache.set(ip, result);
+            resolve(result);
+          } catch (e) {
+            resolve({ ip, country: "Unknown", city: "Unknown" });
+          }
+        });
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve({ ip, country: "Unknown", city: "Unknown" });
+    });
+    req.on("error", () => resolve({ ip, country: "Unknown", city: "Unknown" }));
+  });
+}
+
+// ---- Outbound email (transcript on close) ------------------------------
+// Configure via env vars (see .env.example). Falls back to logging a warning
+// and marking the session as "not-configured" instead of crashing.
+let mailer;
+let mailerConfigured = null; // cache the configured/not-configured check
+
+function getMailer() {
+  if (mailerConfigured !== null) return mailerConfigured ? mailer : null;
+
+  const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    mailerConfigured = false;
+    console.warn(
+      "[cbank] SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASS) — transcript emails will be skipped. See .env.example."
+    );
+    return null;
+  }
+
+  mailer = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === "true",
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  });
+  mailerConfigured = true;
+  return mailer;
+}
+
+function escapeHtml(str) {
+  return String(str || "").replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+function whoLabel(from, clientName) {
+  if (from === "client") return clientName;
+  if (from === "agent") return "cbank Support";
+  if (from === "bot") return "cbank Bot";
+  return "System";
+}
+
+function renderTranscriptText(session) {
+  return session.messages
+    .map((m) => `[${new Date(m.at).toLocaleString()}] ${whoLabel(m.from, session.name)}: ${m.text}`)
+    .join("\n");
+}
+
+function renderTranscriptHtml(session) {
+  const rows = session.messages
+    .map((m) => {
+      const who = escapeHtml(whoLabel(m.from, session.name));
+      const text = escapeHtml(m.text).replace(/\n/g, "<br/>");
+      return `<p style="margin:0 0 10px;"><strong>${who}</strong> <span style="color:#888;font-size:12px;">${new Date(
+        m.at
+      ).toLocaleString()}</span><br/>${text}</p>`;
+    })
+    .join("");
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;">${rows}</div>`;
+}
+
+function finalizeTranscriptStatus(session) {
+  broadcastSessionList();
+  io.to(`session-${session.id}`).emit("session:transcript-status", session.transcriptEmail);
+}
+
+async function sendTranscriptEmail(session) {
+  if (!session.email) {
+    session.transcriptEmail = { status: "skipped", reason: "El cliente no proporcionó email" };
+    finalizeTranscriptStatus(session);
+    return;
+  }
+
+  const transporter = getMailer();
+  if (!transporter) {
+    session.transcriptEmail = { status: "not-configured" };
+    finalizeTranscriptStatus(session);
+    return;
+  }
+
+  const tpl = EMAIL_TEMPLATES[session.locale] || EMAIL_TEMPLATES.es;
+  const dateStr = new Date(session.createdAt).toLocaleDateString();
+
+  try {
+    await transporter.sendMail({
+      from: process.env.MAIL_FROM || `"${tpl.from}" <${process.env.SMTP_USER}>`,
+      to: session.email,
+      subject: tpl.subject(dateStr),
+      text: `${tpl.intro}\n\n${renderTranscriptText(session)}`,
+      html: `<p>${tpl.intro}</p>${renderTranscriptHtml(session)}`,
+    });
+    session.transcriptEmail = { status: "sent", sentAt: new Date().toISOString() };
+  } catch (err) {
+    session.transcriptEmail = { status: "error", error: err.message };
+  }
+
+  finalizeTranscriptStatus(session);
+}
+
+// ---- WhatsApp Business (Meta Cloud API) --------------------------------
+// Configure via env vars (see .env.example). Falls back to logging a
+// warning and skipping the send when not configured, same pattern as email.
+const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || "v22.0";
+
+function whatsappConfigured() {
+  return Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN);
+}
+
+function sendWhatsAppMessage(to, text) {
+  return new Promise((resolve, reject) => {
+    if (!whatsappConfigured()) {
+      console.warn(
+        "[cbank] WhatsApp not configured (WHATSAPP_PHONE_NUMBER_ID/WHATSAPP_ACCESS_TOKEN) — message not sent. See .env.example."
+      );
+      return resolve(null);
+    }
+
+    const payload = JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { body: text },
+    });
+
+    const req = https.request(
+      {
+        hostname: "graph.facebook.com",
+        path: `/${WHATSAPP_API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(data ? JSON.parse(data) : {});
+          } else {
+            console.error(`[cbank] WhatsApp send failed (${res.statusCode}):`, data);
+            reject(new Error(`WhatsApp API error ${res.statusCode}: ${data}`));
+          }
+        });
+      }
+    );
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+function faqText(map, locale) {
+  return (map && (map[locale] || map.es || map.en || map.pt)) || "";
+}
+
+// WhatsApp text messages can't render the widget's clickable FAQ buttons, so
+// replying with a question's number stands in for a click. Reuses the exact
+// same `faqs` list agents manage from the dashboard.
+const WHATSAPP_MENU_COPY = {
+  es: {
+    greeting:
+      "¡Hola! Soy el asistente virtual de cbank. Elegí una pregunta escribiendo su número, o escribí tu consulta y un agente te va a responder.",
+    menuFooter: "\n\nEscribí *menu* en cualquier momento para volver a ver esta lista.",
+  },
+  en: {
+    greeting:
+      "Hi! I'm cbank's virtual assistant. Pick a question by typing its number, or type your own question and an agent will reply.",
+    menuFooter: "\n\nType *menu* anytime to see this list again.",
+  },
+  pt: {
+    greeting:
+      "Olá! Sou o assistente virtual do cbank. Escolha uma pergunta digitando o número dela, ou escreva sua dúvida que um agente vai responder.",
+    menuFooter: "\n\nDigite *menu* a qualquer momento para ver esta lista novamente.",
+  },
+};
+
+function buildWhatsAppMenuText(locale) {
+  const copy = WHATSAPP_MENU_COPY[locale] || WHATSAPP_MENU_COPY.es;
+  const lines = faqs.map((f, i) => `${i + 1}. ${faqText(f.question, locale)}`);
+  return `${copy.greeting}\n\n${lines.join("\n")}${copy.menuFooter}`;
+}
+
+function findWhatsAppSession(from) {
+  const existingId = whatsappSessions.get(from);
+  return existingId ? sessions.get(existingId) : null;
+}
+
+function createWhatsAppSession(from, profileName) {
+  const id = uuidv4();
+  const session = {
+    id,
+    name: profileName || `WhatsApp ${from}`,
+    email: "",
+    whatsapp: from,
+    device: "WhatsApp",
+    locale: "es",
+    channel: "whatsapp",
+    location: { ip: "n/a", country: "WhatsApp", city: "WhatsApp" },
+    status: "open",
+    createdAt: new Date().toISOString(),
+    closedAt: null,
+    messages: [],
+    unread: 0,
+    transcriptEmail: null,
+  };
+  sessions.set(id, session);
+  whatsappSessions.set(from, id);
+  return session;
+}
+
+function pushWhatsAppMessage(session, from, text) {
+  const message = { id: uuidv4(), from, text, at: new Date().toISOString() };
+  session.messages.push(message);
+  io.to(`session-${session.id}`).emit("message:new", message);
+  return message;
+}
+
+// Handles one inbound WhatsApp text message end to end: resumes or creates
+// the session, logs the visitor's message, and either answers instantly via
+// the FAQ bot (first-ever message, "menu", or a numbered reply) or leaves it
+// unread for a human agent — same split as the web widget's FAQ menu.
+async function handleIncomingWhatsAppText(from, text, profileName) {
+  let session = findWhatsAppSession(from);
+  const isNewSession = !session;
+  if (!session) session = createWhatsAppSession(from, profileName);
+
+  pushWhatsAppMessage(session, "client", text);
+
+  const trimmed = text.trim();
+  const isMenuCommand = /^(menu|menú|hi|hola|oi|start)$/i.test(trimmed);
+  const asNumber = Number(trimmed);
+  const faqIndex = Number.isInteger(asNumber) ? asNumber - 1 : -1;
+  const matchedFaq = faqIndex >= 0 && faqIndex < faqs.length ? faqs[faqIndex] : null;
+
+  try {
+    if (isNewSession || isMenuCommand) {
+      const menuText = buildWhatsAppMenuText(session.locale);
+      pushWhatsAppMessage(session, "bot", menuText);
+      await sendWhatsAppMessage(from, menuText);
+    } else if (matchedFaq) {
+      const answer = faqText(matchedFaq.answer, session.locale);
+      pushWhatsAppMessage(session, "bot", answer);
+      await sendWhatsAppMessage(from, answer);
+    } else {
+      // Free-text question the bot doesn't recognize as a menu pick — leave
+      // it unread for a human agent, same as the web widget.
+      session.unread = (session.unread || 0) + 1;
+    }
+  } catch (err) {
+    console.error("[cbank] Failed to send WhatsApp reply:", err.message);
+  }
+
+  broadcastSessionList();
+}
+
+// ---- WhatsApp webhook endpoints -----------------------------------------
+// GET: Meta's one-time verification handshake when you register the webhook
+// URL in the app dashboard (Meta for Developers → WhatsApp → Configuration).
+app.get("/webhooks/whatsapp", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe" && token && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+  return res.sendStatus(403);
+});
+
+// POST: incoming messages and status updates. Meta expects a fast 200 OK, so
+// we ack immediately and process after.
+app.post("/webhooks/whatsapp", (req, res) => {
+  res.sendStatus(200);
+
+  try {
+    const entry = req.body.entry && req.body.entry[0];
+    const change = entry && entry.changes && entry.changes[0];
+    const value = change && change.value;
+    const messages = value && value.messages;
+    if (!messages || !messages.length) return; // e.g. a delivery/read status update — nothing to do
+
+    const contact = value.contacts && value.contacts[0];
+    const profileName = contact && contact.profile && contact.profile.name;
+
+    messages.forEach((msg) => {
+      if (msg.type !== "text") return; // interactive/media messages: out of scope for this build
+      handleIncomingWhatsAppText(msg.from, msg.text.body, profileName);
+    });
+  } catch (err) {
+    console.error("[cbank] Error handling WhatsApp webhook payload:", err);
+  }
+});
+
+io.on("connection", (socket) => {
+  // FAQ list is global config, not per-session — send it to whoever just
+  // connected (widget or dashboard) right away.
+  socket.emit("faqs:list", faqs);
+
+  // ---- Client (widget) events -----------------------------------------
+  socket.on("client:join", ({ sessionId, name, email, whatsapp, device, locale }) => {
+    let id = sessionId && sessions.has(sessionId) ? sessionId : uuidv4();
+    const ip = getClientIp(socket);
+
+    if (!sessions.has(id)) {
+      sessions.set(id, {
+        id,
+        name: name || "cbank client",
+        email: email || "",
+        whatsapp: whatsapp || "",
+        device: device || "Unknown device",
+        locale: EMAIL_TEMPLATES[locale] ? locale : "es",
+        channel: "web",
+        location: { ip, country: "Detecting…", city: "Detecting…" },
+        status: "open",
+        createdAt: new Date().toISOString(),
+        closedAt: null,
+        messages: [],
+        unread: 0,
+        transcriptEmail: null,
+      });
+    } else {
+      // Returning visitor on the same session — keep contact details current.
+      const existing = sessions.get(id);
+      if (name) existing.name = name;
+      if (email) existing.email = email;
+      if (whatsapp) existing.whatsapp = whatsapp;
+      if (device) existing.device = device;
+      if (EMAIL_TEMPLATES[locale]) existing.locale = locale;
+      if (!existing.location) existing.location = { ip, country: "Detecting…", city: "Detecting…" };
+    }
+
+    socket.data.sessionId = id;
+    socket.data.role = "client";
+    socket.join(`session-${id}`);
+
+    socket.emit("client:joined", {
+      sessionId: id,
+      messages: sessions.get(id).messages,
+    });
+
+    broadcastSessionList();
+
+    // Resolve geolocation asynchronously so the join isn't delayed by a
+    // slow (or rate-limited) third-party API call.
+    geolocateIp(ip).then((location) => {
+      const s = sessions.get(id);
+      if (!s) return;
+      s.location = location;
+      broadcastSessionList();
+    });
+  });
+
+  socket.on("client:message", ({ sessionId, text }) => {
+    const session = sessions.get(sessionId);
+    if (!session || !text || !text.trim()) return;
+
+    const message = {
+      id: uuidv4(),
+      from: "client",
+      text: text.trim(),
+      at: new Date().toISOString(),
+    };
+    session.messages.push(message);
+    session.unread = (session.unread || 0) + 1;
+
+    io.to(`session-${sessionId}`).emit("message:new", message);
+    broadcastSessionList();
+  });
+
+  socket.on("client:typing", ({ sessionId, isTyping }) => {
+    socket.to(`session-${sessionId}`).emit("typing", { from: "client", isTyping });
+  });
+
+  // Visitor clicked a FAQ bot button: log the question as if the visitor
+  // asked it, then answer instantly as "bot" — no agent required. Both
+  // messages land in session history (and the emailed transcript), so an
+  // agent who joins later still has full context.
+  socket.on("client:faq", ({ sessionId, faqId, locale }) => {
+    const session = sessions.get(sessionId);
+    const faq = faqs.find((f) => f.id === faqId);
+    if (!session || !faq) return;
+
+    const loc = EMAIL_TEMPLATES[locale] ? locale : session.locale || "es";
+    const pick = (map) => (map && (map[loc] || map.es || map.en || map.pt)) || "";
+
+    const questionMsg = { id: uuidv4(), from: "client", text: pick(faq.question), at: new Date().toISOString() };
+    const answerMsg = { id: uuidv4(), from: "bot", text: pick(faq.answer), at: new Date().toISOString() };
+    session.messages.push(questionMsg, answerMsg);
+    // Not counted as "unread" — the bot already handled it, no need to page an agent.
+
+    io.to(`session-${sessionId}`).emit("message:new", questionMsg);
+    io.to(`session-${sessionId}`).emit("message:new", answerMsg);
+    broadcastSessionList();
+  });
+
+  // ---- Agent (dashboard) events ----------------------------------------
+  socket.on("agent:join", () => {
+    socket.data.role = "agent";
+    socket.join("agents");
+    broadcastSessionList();
+  });
+
+  socket.on("agent:watch", (sessionId) => {
+    socket.join(`session-${sessionId}`);
+    const session = sessions.get(sessionId);
+    if (session) {
+      session.unread = 0;
+      socket.emit("agent:history", { sessionId, messages: session.messages });
+      broadcastSessionList();
+    }
+  });
+
+  socket.on("agent:message", ({ sessionId, text }) => {
+    const session = sessions.get(sessionId);
+    if (!session || !text || !text.trim()) return;
+
+    const message = {
+      id: uuidv4(),
+      from: "agent",
+      text: text.trim(),
+      at: new Date().toISOString(),
+    };
+    session.messages.push(message);
+
+    io.to(`session-${sessionId}`).emit("message:new", message);
+    broadcastSessionList();
+
+    if (session.channel === "whatsapp") {
+      sendWhatsAppMessage(session.whatsapp, message.text).catch((err) => {
+        console.error("[cbank] Failed to deliver agent reply over WhatsApp:", err.message);
+      });
+    }
+  });
+
+  socket.on("agent:typing", ({ sessionId, isTyping }) => {
+    socket.to(`session-${sessionId}`).emit("typing", { from: "agent", isTyping });
+  });
+
+  // FAQ bot management — create (no id) or update (id) a question/answer
+  // pair. Each field is a { es, en, pt } map; at least one language must be
+  // filled in for question and for answer, so a bare-minimum FAQ still
+  // resolves to *something* via the es -> en -> pt fallback used everywhere
+  // else in this app.
+  socket.on("agent:faqs:save", ({ id, question, answer } = {}) => {
+    const q = {
+      es: ((question && question.es) || "").trim(),
+      en: ((question && question.en) || "").trim(),
+      pt: ((question && question.pt) || "").trim(),
+    };
+    const a = {
+      es: ((answer && answer.es) || "").trim(),
+      en: ((answer && answer.en) || "").trim(),
+      pt: ((answer && answer.pt) || "").trim(),
+    };
+    if (!(q.es || q.en || q.pt) || !(a.es || a.en || a.pt)) return;
+
+    if (id) {
+      const existing = faqs.find((f) => f.id === id);
+      if (existing) {
+        existing.question = q;
+        existing.answer = a;
+      }
+    } else {
+      faqs.push({ id: uuidv4(), question: q, answer: a });
+    }
+    io.emit("faqs:list", faqs);
+  });
+
+  socket.on("agent:faqs:delete", (id) => {
+    faqs = faqs.filter((f) => f.id !== id);
+    io.emit("faqs:list", faqs);
+  });
+
+  socket.on("agent:close", (sessionId) => {
+    const session = sessions.get(sessionId);
+    if (!session) return;
+
+    session.status = "closed";
+    session.closedAt = new Date().toISOString();
+    session.transcriptEmail = { status: "sending" };
+
+    io.to(`session-${sessionId}`).emit("session:closed");
+    broadcastSessionList();
+
+    // Fire-and-forget: updates session.transcriptEmail and rebroadcasts once done.
+    sendTranscriptEmail(session);
+  });
+
+  socket.on("disconnect", () => {
+    // Sessions persist in memory so a client reconnecting (e.g. page refresh)
+    // with the same sessionId can resume the conversation.
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`cbank live chat server running at http://localhost:${PORT}`);
+  console.log(`  Widget demo:     http://localhost:${PORT}/widget-demo.html`);
+  console.log(`  Agent dashboard: http://localhost:${PORT}/agent-dashboard.html`);
+  console.log(`  WhatsApp webhook: http://localhost:${PORT}/webhooks/whatsapp`);
+  getMailer(); // logs a warning immediately if SMTP isn't configured, instead of only on first close
+  if (!whatsappConfigured()) {
+    console.warn(
+      "[cbank] WhatsApp not configured (WHATSAPP_PHONE_NUMBER_ID/WHATSAPP_ACCESS_TOKEN) — incoming messages will be logged but replies won't be sent. See .env.example."
+    );
+  }
+});
