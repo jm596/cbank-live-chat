@@ -1,0 +1,14 @@
+{
+    "name": "cbank Support — Agent Dashboard",
+    "short_name": "cbank Support",
+    "description": "Panel de agentes para atender chats de cbank en vivo (web + WhatsApp).",
+    "start_url": "/agent-dashboard.html",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#0b3d91",
+    "theme_color": "#0b3d91",
+    "orientation": "portrait-primary",
+    "icons": [
+          { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    ]
+}
