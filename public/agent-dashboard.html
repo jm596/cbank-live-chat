@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>cbank Support — Agent Dashboard</title>
+ <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>cbank Support — Agent Dashboard</title>
  <link rel="manifest" href="/manifest.json" />
  <meta name="theme-color" content="#0b3d91" />
  <link rel="apple-touch-icon" href="/icon.svg" />
-<style>
+ <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a; }
   #app { display: flex; height: 100vh; }
@@ -18,6 +18,8 @@
   #sidebar header .subtitle { font-size: 12px; opacity: 0.85; margin-top: 2px; }
   #manage-faqs-btn { margin-top: 10px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4); color: #fff; font-size: 12px; font-weight: 600; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
   #manage-faqs-btn:hover { background: rgba(255,255,255,0.25); }
+  #unanswered-btn { margin-top: 8px; margin-left: 8px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4); color: #fff; font-size: 12px; font-weight: 600; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  #unanswered-btn:hover { background: rgba(255,255,255,0.25); }
 
   #filter-tabs { display: flex; border-bottom: 1px solid #e2e6ee; background: #fafbfd; }
   .filter-tab { flex: 1; text-align: center; padding: 10px 4px; font-size: 12.5px; font-weight: 600; color: #888; cursor: pointer; border-bottom: 2px solid transparent; }
@@ -45,6 +47,8 @@
   #close-btn { background: #fff; border: 1px solid #dcdfe6; border-radius: 8px; padding: 7px 14px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
   #close-btn:hover { background: #f4f6fb; }
   #close-btn:disabled { color: #aaa; cursor: not-allowed; }
+  #reopen-btn { background: #0b3d91; color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 12.5px; cursor: pointer; white-space: nowrap; margin-left: 8px; }
+  #reopen-btn:hover { background: #092f70; }
 
   .transcript-status { font-size: 12px; padding: 8px 24px; border-bottom: 1px solid #e2e6ee; }
   .transcript-status.sent { background: #eef9f0; color: #1e7d3a; }
@@ -102,441 +106,571 @@
   .faq-edit-actions .save-btn:hover { background: #092f70; }
   .faq-edit-actions .cancel-btn { background: #fff; border: 1px solid #dcdfe6; border-radius: 6px; padding: 7px 14px; font-size: 12.5px; cursor: pointer; }
   .faq-edit-actions .cancel-btn:hover { background: #f4f6fb; }
-</style>
-</head>
-<body>
-<div id="app">
-  <div id="sidebar">
+
+  /* ---- Unanswered questions modal ---- */
+  #unanswered-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(20,26,40,0.45); z-index: 1000; align-items: center; justify-content: center; }
+  #unanswered-modal-overlay.open { display: flex; }
+  #unanswered-modal { width: 640px; max-width: calc(100vw - 40px); max-height: calc(100vh - 60px); background: #fff; border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+  #unanswered-modal-header { background: #0b3d91; color: #fff; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; }
+  #unanswered-modal-header .title { font-weight: 700; font-size: 15px; }
+  #unanswered-modal-header .subtitle { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+  #unanswered-modal-close { background: transparent; border: none; color: #fff; font-size: 22px; cursor: pointer; line-height: 1; }
+  #unanswered-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; background: #f7f9fd; }
+
+  .unanswered-card { background: #fff; border: 1px solid #e2e6ee; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .unanswered-card .unanswered-text { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+  .unanswered-card .unanswered-meta { font-size: 11.5px; color: #999; margin-bottom: 8px; }
+  .unanswered-card .unanswered-actions { display: flex; gap: 8px; }
+  .unanswered-card .unanswered-actions button { font-size: 12px; border-radius: 6px; padding: 5px 10px; cursor: pointer; border: 1px solid #dcdfe6; background: #fff; }
+  .unanswered-card .unanswered-actions button:hover { background: #f4f6fb; }
+  .unanswered-card .unanswered-actions .promote-btn { color: #0b3d91; border-color: #b7c2e0; font-weight: 600; }
+  .unanswered-card .unanswered-actions .promote-btn:hover { background: #eef2fb; }
+  .unanswered-card .unanswered-actions .discard-btn { color: #b3261e; border-color: #f3c9c5; }
+  .unanswered-card .unanswered-actions .discard-btn:hover { background: #fdeeee; }
+  </style>
+ </head>
+ <body>
+  <div id="app">
+   <div id="sidebar">
     <header>
-      <div class="title">cbank Support</div>
-      <div class="subtitle">Agent dashboard</div>
-      <button id="manage-faqs-btn" type="button">❓ Gestionar preguntas frecuentes</button>
+     <div class="title">cbank Support</div>div>
+     <div class="subtitle">Agent dashboard</div>div>
+     <button id="manage-faqs-btn" type="button">❓ Gestionar preguntas frecuentes</button>button>
+     <button id="unanswered-btn" type="button">🧠 Preguntas sin responder</button>button>
     </header>
     <div id="filter-tabs">
-      <div class="filter-tab active" data-filter="all">Todas</div>
-      <div class="filter-tab" data-filter="open">Activas</div>
-      <div class="filter-tab" data-filter="closed">Cerradas</div>
-    </div>
+     <div class="filter-tab active" data-filter="all">Todas</div>div>
+     <div class="filter-tab" data-filter="open">Activas</div>div>
+     <div class="filter-tab" data-filter="closed">Cerradas</div>div>
+    </div>div>
     <div id="session-list">
-      <div id="empty-list">No conversations yet. Open the widget demo page to start one.</div>
-    </div>
-  </div>
+     <div id="empty-list">No conversations yet. Open the widget demo page to start one.</div>div>
+    </div>div>
+   </div>div>
 
-  <div id="main">
-    <div id="placeholder">Select a conversation on the left to start replying.</div>
-  </div>
-</div>
+   <div id="main">
+    <div id="placeholder">Select a conversation on the left to start replying.</div>div>
+   </div>div>
+  </div>div>
 
-<div id="faq-modal-overlay">
-  <div id="faq-modal">
+  <div id="faq-modal-overlay">
+   <div id="faq-modal">
     <div id="faq-modal-header">
-      <div>
-        <div class="title">Preguntas frecuentes del bot</div>
-        <div class="subtitle">Visibles en el widget del cliente en ES / EN / PT</div>
-      </div>
-      <button id="faq-modal-close" aria-label="Cerrar">×</button>
+     <div>
+      <div class="title">Preguntas frecuentes del bot</div>
+      <div class="subtitle">Visibles en el widget del cliente en ES / EN / PT</div>
+     </div>
+     <button id="faq-modal-close" aria-label="Cerrar">×</button>button>
     </div>
     <div id="faq-modal-body">
-      <div id="faq-list"></div>
-      <button id="faq-add-btn" type="button">+ Agregar pregunta</button>
+     <div id="faq-list"></div>
+     <button id="faq-add-btn" type="button">+ Agregar pregunta</button>button>
     </div>
+   </div>
   </div>
-</div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script>
-  const socket = io();
-  let sessions = [];
-  let activeSessionId = null;
-  let filter = "all"; // all | open | closed
+  <div id="unanswered-modal-overlay">
+   <div id="unanswered-modal">
+    <div id="unanswered-modal-header">
+     <div>
+      <div class="title">Preguntas sin responder</div>
+      <div class="subtitle">Mensajes que no coincidieron con ninguna FAQ — revisalos y convertilos en preguntas frecuentes</div>
+     </div>
+     <button id="unanswered-modal-close" aria-label="Cerrar">×</button>button>
+    </div>
+    <div id="unanswered-modal-body">
+     <div id="unanswered-list"></div>
+    </div>
+   </div>
+  </div>
 
-  let faqs = [];
-  let editingFaqId = null; // id being edited, or "new" for the add form, or null
-  let editingDraft = null; // { question:{es,en,pt}, answer:{es,en,pt} } while editing/creating
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+   const socket = io();
+   let sessions = [];
+   let activeSessionId = null;
+   let filter = "all"; // all | open | closed
 
-  const sessionListEl = document.getElementById("session-list");
-  const mainEl = document.getElementById("main");
-  const filterTabs = document.querySelectorAll(".filter-tab");
-  const faqModalOverlay = document.getElementById("faq-modal-overlay");
-  const faqListEl = document.getElementById("faq-list");
+   let faqs = [];
+   let editingFaqId = null; // id being edited, or "new" for the add form, or null
+   let editingDraft = null; // { question:{es,en,pt}, answer:{es,en,pt} } while editing/creating
 
-  filterTabs.forEach((tab) => {
+   let unanswered = [];
+
+   const sessionListEl = document.getElementById("session-list");
+   const mainEl = document.getElementById("main");
+   const filterTabs = document.querySelectorAll(".filter-tab");
+   const faqModalOverlay = document.getElementById("faq-modal-overlay");
+   const faqListEl = document.getElementById("faq-list");
+   const unansweredModalOverlay = document.getElementById("unanswered-modal-overlay");
+   const unansweredListEl = document.getElementById("unanswered-list");
+
+   filterTabs.forEach((tab) => {
     tab.addEventListener("click", () => {
-      filter = tab.dataset.filter;
-      filterTabs.forEach((t) => t.classList.toggle("active", t === tab));
-      renderSessionList();
+     filter = tab.dataset.filter;
+     filterTabs.forEach((t) => t.classList.toggle("active", t === tab));
+     renderSessionList();
     });
-  });
+   });
 
-  socket.on("connect", () => {
+   socket.on("connect", () => {
     socket.emit("agent:join");
-  });
+   });
 
-  socket.on("sessions:list", (list) => {
+   socket.on("sessions:list", (list) => {
     sessions = list;
     renderSessionList();
     if (activeSessionId) renderMainHeader(); // keep header (location/transcript status) fresh
-  });
+   });
 
-  socket.on("agent:history", ({ sessionId, messages }) => {
+   socket.on("agent:history", ({ sessionId, messages }) => {
     if (sessionId !== activeSessionId) return;
     renderConversation(messages);
-  });
+   });
 
-  socket.on("message:new", (message) => {
+   socket.on("message:new", (message) => {
     const messagesEl = document.getElementById("messages");
     if (messagesEl && activeSessionId) {
-      appendMessage(message);
+     appendMessage(message);
     }
-  });
+   });
 
-  socket.on("typing", (data) => {
+   socket.on("typing", (data) => {
     const el = document.getElementById("typing-indicator");
     if (el && data.from === "client") {
-      el.style.display = data.isTyping ? "block" : "none";
+     el.style.display = data.isTyping ? "block" : "none";
     }
-  });
+   });
 
-  socket.on("session:transcript-status", (status) => {
+   socket.on("session:transcript-status", (status) => {
     const session = sessions.find((s) => s.id === activeSessionId);
     if (session) {
-      session.transcriptEmail = status;
-      renderMainHeader();
+     session.transcriptEmail = status;
+     renderMainHeader();
     }
-  });
+   });
 
-  socket.on("faqs:list", (list) => {
+   socket.on("faqs:list", (list) => {
     faqs = list;
     // Any FAQ open in the editor that just got deleted elsewhere loses its draft.
     if (editingFaqId && editingFaqId !== "new" && !faqs.some((f) => f.id === editingFaqId)) {
-      editingFaqId = null;
-      editingDraft = null;
+     editingFaqId = null;
+     editingDraft = null;
     }
     renderFaqManager();
-  });
+   });
 
-  function filteredSessions() {
+   socket.on("unanswered:list", (list) => {
+    unanswered = list;
+    renderUnansweredBadge();
+    renderUnansweredManager();
+   });
+
+   socket.on("session:reopened", () => {
+    // No-op here; sessions:list broadcast right after already refreshes state.
+   });
+
+   function filteredSessions() {
     if (filter === "open") return sessions.filter((s) => s.status !== "closed");
     if (filter === "closed") return sessions.filter((s) => s.status === "closed");
     return sessions;
-  }
+   }
 
-  function renderSessionList() {
+   function renderSessionList() {
     const list = filteredSessions();
 
     if (list.length === 0) {
-      sessionListEl.innerHTML = '<div id="empty-list">No conversations here yet.</div>';
-      return;
+     sessionListEl.innerHTML = '<div id="empty-list">No conversations here yet.</div>';
+     return;
     }
 
     sessionListEl.innerHTML = "";
     list.forEach((s) => {
-      const item = document.createElement("div");
-      item.className = "session-item" + (s.id === activeSessionId ? " active" : "");
-      item.onclick = () => selectSession(s.id);
+     const item = document.createElement("div");
+     item.className = "session-item" + (s.id === activeSessionId ? " active" : "");
+     item.onclick = () => selectSession(s.id);
 
-      const unreadBadge = s.unread > 0 ? `<span class="unread-dot">${s.unread > 9 ? "9+" : s.unread}</span>` : "";
-      const closedTag = s.status === "closed" ? `<span class="status-closed">Closed</span>` : "";
-      const location = s.location && s.location.country ? `${escapeHtml(s.location.city)}, ${escapeHtml(s.location.country)}` : "";
-      const channelTag = s.channel === "whatsapp" ? `<span class="channel-tag channel-whatsapp">WhatsApp</span>` : "";
+     const unreadBadge = s.unread > 0 ? `<span class="unread-dot">${s.unread > 9 ? "9+" : s.unread}</span>` : "";
+     const closedTag = s.status === "closed" ? `<span class="status-closed">Closed</span>` : "";
+     const location = s.location && s.location.country ? `${escapeHtml(s.location.city)}, ${escapeHtml(s.location.country)}` : "";
+     const channelTag = s.channel === "whatsapp" ? `<span class="channel-tag channel-whatsapp">WhatsApp</span>` : "";
 
-      item.innerHTML = `
-        <div class="name"><span>${escapeHtml(s.name)}</span>${unreadBadge}</div>
-        <div class="preview">${escapeHtml(s.lastMessage || "No messages yet")}</div>
-        <div class="subline">${channelTag}${location}</div>
-        ${closedTag}
-      `;
-      sessionListEl.appendChild(item);
+     item.innerHTML = `
+     <div class="name"><span>${escapeHtml(s.name)}</span>${unreadBadge}</div>
+     <div class="preview">${escapeHtml(s.lastMessage || "No messages yet")}</div>
+     <div class="subline">${channelTag}${location}</div>
+     ${closedTag}
+     `;
+     sessionListEl.appendChild(item);
     });
-  }
+   }
 
-  function selectSession(sessionId) {
+   function selectSession(sessionId) {
     activeSessionId = sessionId;
     socket.emit("agent:watch", sessionId);
     renderSessionList();
     renderMainPanel();
-  }
+   }
 
-  function transcriptStatusLine(session) {
+   function transcriptStatusLine(session) {
     if (!session.transcriptEmail) return "";
     const te = session.transcriptEmail;
     if (te.status === "sending") {
-      return `<div class="transcript-status sending">Enviando copia de la conversación por correo…</div>`;
+     return `<div class="transcript-status sending">Enviando copia de la conversación por correo…</div>`;
     }
     if (te.status === "sent") {
-      return `<div class="transcript-status sent">Copia enviada a ${escapeHtml(session.email)} — ${new Date(te.sentAt).toLocaleString()}</div>`;
+     return `<div class="transcript-status sent">Copia enviada a ${escapeHtml(session.email)} — ${new Date(te.sentAt).toLocaleString()}</div>`;
     }
     if (te.status === "error") {
-      return `<div class="transcript-status error">No se pudo enviar la copia por correo (${escapeHtml(te.error || "error desconocido")}).</div>`;
+     return `<div class="transcript-status error">No se pudo enviar la copia por correo (${escapeHtml(te.error || "error desconocido")}).</div>`;
     }
     if (te.status === "not-configured") {
-      return `<div class="transcript-status not-configured">Correo no configurado en el servidor (ver .env.example) — no se envió copia.</div>`;
+     return `<div class="transcript-status not-configured">Correo no configurado en el servidor (ver .env.example) — no se envió copia.</div>`;
     }
     if (te.status === "skipped") {
-      return `<div class="transcript-status skipped">No se envió copia: el cliente no dejó un email.</div>`;
+     return `<div class="transcript-status skipped">No se envió copia: el cliente no dejó un email.</div>`;
     }
     return "";
-  }
+   }
 
-  function renderMainHeader() {
+   function renderMainHeader() {
     const headerHost = document.getElementById("main-header-host");
     if (!headerHost) return;
     const session = sessions.find((s) => s.id === activeSessionId);
     headerHost.innerHTML = mainHeaderHtml(session);
 
     document.getElementById("close-btn").onclick = () => {
-      socket.emit("agent:close", activeSessionId);
+     socket.emit("agent:close", activeSessionId);
     };
-  }
+    const reopenBtn = document.getElementById("reopen-btn");
+    if (reopenBtn) reopenBtn.onclick = () => socket.emit("agent:reopen", activeSessionId);
+   }
 
-  function mainHeaderHtml(session) {
+   function mainHeaderHtml(session) {
     const contactLine = [
-      session && session.email ? escapeHtml(session.email) : "Sin email",
-      session && session.whatsapp ? "WhatsApp " + escapeHtml(session.whatsapp) : "",
-    ].filter(Boolean).join(" · ");
+     session && session.email ? escapeHtml(session.email) : "Sin email",
+     session && session.whatsapp ? "WhatsApp " + escapeHtml(session.whatsapp) : "",
+     ].filter(Boolean).join(" · ");
 
     const locationLine = session && session.location
-      ? `${escapeHtml(session.location.city || "")}, ${escapeHtml(session.location.country || "")} · IP ${escapeHtml(session.location.ip || "")}`
-      : "";
+    ? `${escapeHtml(session.location.city || "")}, ${escapeHtml(session.location.country || "")} · IP ${escapeHtml(session.location.ip || "")}`
+     : "";
 
     const deviceLine = session && session.device ? escapeHtml(session.device) : "";
 
     const channelTag = session && session.channel === "whatsapp" ? `<span class="channel-tag channel-whatsapp">WhatsApp</span>` : "";
 
     return `
-      <div id="main-header">
-        <div>
-          <div class="title">${channelTag}${escapeHtml(session ? session.name : "Conversation")}</div>
-          <div class="meta meta-line">${contactLine}</div>
-          <div class="meta meta-line">${locationLine}${deviceLine ? " · " + deviceLine : ""}</div>
-        </div>
-        <button id="close-btn" ${session && session.status === "closed" ? "disabled" : ""}>
-          ${session && session.status === "closed" ? "Closed" : "Close conversation"}
-        </button>
-      </div>
-      ${session ? transcriptStatusLine(session) : ""}
+    <div id="main-header">
+    <div>
+    <div class="title">${channelTag}${escapeHtml(session ? session.name : "Conversation")}</div>
+    <div class="meta meta-line">${contactLine}</div>
+    <div class="meta meta-line">${locationLine}${deviceLine ? " · " + deviceLine : ""}</div>
+    </div>
+    <div>
+    <button id="close-btn" ${session && session.status === "closed" ? "disabled" : ""}>
+    ${session && session.status === "closed" ? "Closed" : "Close conversation"}
+    </button>
+    ${session && session.status === "closed" ? '<button id="reopen-btn" type="button">Reabrir conversación</button>' : ""}
+    </div>
+    </div>
+    ${session ? transcriptStatusLine(session) : ""}
     `;
-  }
+   }
 
-  function renderMainPanel() {
+   function renderMainPanel() {
     const session = sessions.find((s) => s.id === activeSessionId);
 
     mainEl.innerHTML = `
-      <div id="main-header-host">${mainHeaderHtml(session)}</div>
-      <div id="messages"></div>
-      <div id="typing-indicator">Client is typing…</div>
-      <div id="inputbar">
-        <input id="msg-input" type="text" placeholder="Type a reply…" autocomplete="off" ${session && session.status === "closed" ? "disabled" : ""} />
-        <button id="send-btn" ${session && session.status === "closed" ? "disabled" : ""}>Send</button>
-      </div>
+    <div id="main-header-host">${mainHeaderHtml(session)}</div>
+    <div id="messages"></div>
+    <div id="typing-indicator">Client is typing…</div>
+    <div id="inputbar">
+    <input id="msg-input" type="text" placeholder="Type a reply…" autocomplete="off" ${session && session.status === "closed" ? "disabled" : ""} />
+    <button id="send-btn" ${session && session.status === "closed" ? "disabled" : ""}>Send</button>
+    </div>
     `;
 
     document.getElementById("close-btn").onclick = () => {
-      socket.emit("agent:close", activeSessionId);
+     socket.emit("agent:close", activeSessionId);
     };
+    const reopenBtn = document.getElementById("reopen-btn");
+    if (reopenBtn) reopenBtn.onclick = () => socket.emit("agent:reopen", activeSessionId);
 
     const input = document.getElementById("msg-input");
     const sendBtn = document.getElementById("send-btn");
 
     function send() {
-      const text = input.value;
-      if (!text.trim()) return;
-      socket.emit("agent:message", { sessionId: activeSessionId, text });
-      input.value = "";
+     const text = input.value;
+     if (!text.trim()) return;
+     socket.emit("agent:message", { sessionId: activeSessionId, text });
+     input.value = "";
     }
 
     sendBtn.onclick = send;
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        send();
-      } else {
-        socket.emit("agent:typing", { sessionId: activeSessionId, isTyping: true });
-      }
+     if (e.key === "Enter") {
+      e.preventDefault();
+      send();
+     } else {
+      socket.emit("agent:typing", { sessionId: activeSessionId, isTyping: true });
+     }
     });
-  }
+   }
 
-  function renderConversation(messages) {
+   function renderConversation(messages) {
     const messagesEl = document.getElementById("messages");
     if (!messagesEl) return;
     messagesEl.innerHTML = "";
     messages.forEach(appendMessage);
-  }
+   }
 
-  function appendMessage(message) {
+   function appendMessage(message) {
     const messagesEl = document.getElementById("messages");
     if (!messagesEl) return;
     const row = document.createElement("div");
     row.className = "msg msg-" + message.from;
     if (message.from === "bot") {
-      row.innerHTML = '<span class="msg-label">cbank Bot</span>' + escapeHtml(message.text);
+     row.innerHTML = '<span class="msg-label">cbank Bot</span>' + escapeHtml(message.text);
     } else {
-      row.textContent = message.text;
+     row.textContent = message.text;
     }
     messagesEl.appendChild(row);
     messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
+   }
 
-  // ---- FAQ manager ------------------------------------------------------
-  document.getElementById("manage-faqs-btn").addEventListener("click", () => {
+   // ---- FAQ manager ------------------------------------------------------
+   document.getElementById("manage-faqs-btn").addEventListener("click", () => {
     faqModalOverlay.classList.add("open");
     renderFaqManager();
-  });
-  document.getElementById("faq-modal-close").addEventListener("click", () => {
+   });
+   document.getElementById("faq-modal-close").addEventListener("click", () => {
     faqModalOverlay.classList.remove("open");
     editingFaqId = null;
     editingDraft = null;
-  });
-  faqModalOverlay.addEventListener("click", (e) => {
+   });
+   faqModalOverlay.addEventListener("click", (e) => {
     if (e.target === faqModalOverlay) faqModalOverlay.classList.remove("open");
-  });
-  document.getElementById("faq-add-btn").addEventListener("click", () => {
+   });
+   document.getElementById("faq-add-btn").addEventListener("click", () => {
     editingFaqId = "new";
     editingDraft = { question: { es: "", en: "", pt: "" }, answer: { es: "", en: "", pt: "" } };
     renderFaqManager();
-  });
+   });
 
-  function blankFaqIfMissing(faq) {
+   function blankFaqIfMissing(faq) {
     return {
-      question: { es: faq?.question?.es || "", en: faq?.question?.en || "", pt: faq?.question?.pt || "" },
-      answer: { es: faq?.answer?.es || "", en: faq?.answer?.en || "", pt: faq?.answer?.pt || "" },
+     question: { es: faq?.question?.es || "", en: faq?.question?.en || "", pt: faq?.question?.pt || "" },
+     answer: { es: faq?.answer?.es || "", en: faq?.answer?.en || "", pt: faq?.answer?.pt || "" },
     };
-  }
+   }
 
-  function faqEditFormHtml(id, draft) {
+   function faqEditFormHtml(id, draft) {
     const langs = [["es", "Español"], ["en", "English"], ["pt", "Português"]];
     const questionCols = langs
-      .map(
-        ([code, label]) => `
-        <div class="faq-edit-col">
-          <label>Pregunta (${label})</label>
-          <input type="text" data-field="question" data-lang="${code}" value="${escapeAttr(draft.question[code])}" />
-        </div>`
-      )
-      .join("");
+    .map(
+     ([code, label]) => `
+     <div class="faq-edit-col">
+     <label>Pregunta (${label})</label>
+     <input type="text" data-field="question" data-lang="${code}" value="${escapeAttr(draft.question[code])}" />
+     </div>`
+     )
+    .join("");
     const answerCols = langs
-      .map(
-        ([code, label]) => `
-        <div class="faq-edit-col">
-          <label>Respuesta (${label})</label>
-          <textarea data-field="answer" data-lang="${code}">${escapeHtml(draft.answer[code])}</textarea>
-        </div>`
-      )
-      .join("");
+    .map(
+     ([code, label]) => `
+     <div class="faq-edit-col">
+     <label>Respuesta (${label})</label>
+     <textarea data-field="answer" data-lang="${code}">${escapeHtml(draft.answer[code])}</textarea>
+     </div>`
+     )
+    .join("");
 
     return `
-      <div class="faq-edit-grid">${questionCols}</div>
-      <div class="faq-edit-grid">${answerCols}</div>
-      <div class="faq-edit-actions">
-        <button type="button" class="save-btn" data-action="save" data-id="${id}">Guardar</button>
-        <button type="button" class="cancel-btn" data-action="cancel">Cancelar</button>
-      </div>
+    <div class="faq-edit-grid">${questionCols}</div>
+    <div class="faq-edit-grid">${answerCols}</div>
+    <div class="faq-edit-actions">
+    <button type="button" class="save-btn" data-action="save" data-id="${id}">Guardar</button>
+    <button type="button" class="cancel-btn" data-action="cancel">Cancelar</button>
+    </div>
     `;
-  }
+   }
 
-  function renderFaqManager() {
+   function renderFaqManager() {
     if (!faqModalOverlay.classList.contains("open")) return;
 
     faqListEl.innerHTML = "";
 
     faqs.forEach((faq) => {
-      const card = document.createElement("div");
-      card.className = "faq-card";
+     const card = document.createElement("div");
+     card.className = "faq-card";
 
-      if (editingFaqId === faq.id) {
-        card.innerHTML = faqEditFormHtml(faq.id, editingDraft);
-      } else {
-        const previewQuestion = faq.question.es || faq.question.en || faq.question.pt || "(sin texto)";
-        const previewAnswer = faq.answer.es || faq.answer.en || faq.answer.pt || "";
-        card.innerHTML = `
-          <div class="faq-view-question">${escapeHtml(previewQuestion)}</div>
-          <div class="faq-view-answer">${escapeHtml(previewAnswer)}</div>
-          <div class="faq-actions">
-            <button type="button" data-action="edit" data-id="${faq.id}">Editar</button>
-            <button type="button" class="delete-btn" data-action="delete" data-id="${faq.id}">Eliminar</button>
-          </div>
-        `;
-      }
-      faqListEl.appendChild(card);
+     if (editingFaqId === faq.id) {
+      card.innerHTML = faqEditFormHtml(faq.id, editingDraft);
+     } else {
+      const previewQuestion = faq.question.es || faq.question.en || faq.question.pt || "(sin texto)";
+      const previewAnswer = faq.answer.es || faq.answer.en || faq.answer.pt || "";
+      card.innerHTML = `
+      <div class="faq-view-question">${escapeHtml(previewQuestion)}</div>
+      <div class="faq-view-answer">${escapeHtml(previewAnswer)}</div>
+      <div class="faq-actions">
+      <button type="button" data-action="edit" data-id="${faq.id}">Editar</button>
+      <button type="button" class="delete-btn" data-action="delete" data-id="${faq.id}">Eliminar</button>
+      </div>
+      `;
+     }
+     faqListEl.appendChild(card);
     });
 
     if (editingFaqId === "new") {
-      const card = document.createElement("div");
-      card.className = "faq-card";
-      card.innerHTML = faqEditFormHtml("new", editingDraft);
-      faqListEl.appendChild(card);
+     const card = document.createElement("div");
+     card.className = "faq-card";
+     card.innerHTML = faqEditFormHtml("new", editingDraft);
+     faqListEl.appendChild(card);
     }
 
     if (faqs.length === 0 && editingFaqId !== "new") {
-      const empty = document.createElement("div");
-      empty.style.cssText = "font-size:13px;color:#999;padding:8px 2px;";
-      empty.textContent = "No hay preguntas frecuentes todavía.";
-      faqListEl.appendChild(empty);
+     const empty = document.createElement("div");
+     empty.style.cssText = "font-size:13px;color:#999;padding:8px 2px;";
+     empty.textContent = "No hay preguntas frecuentes todavía.";
+     faqListEl.appendChild(empty);
     }
-  }
+   }
 
-  faqListEl.addEventListener("click", (e) => {
+   faqListEl.addEventListener("click", (e) => {
     const editBtn = e.target.closest('[data-action="edit"]');
     const deleteBtn = e.target.closest('[data-action="delete"]');
     const saveBtn = e.target.closest('[data-action="save"]');
     const cancelBtn = e.target.closest('[data-action="cancel"]');
 
     if (editBtn) {
-      const faq = faqs.find((f) => f.id === editBtn.dataset.id);
-      editingFaqId = faq.id;
-      editingDraft = blankFaqIfMissing(faq);
-      renderFaqManager();
-      return;
+     const faq = faqs.find((f) => f.id === editBtn.dataset.id);
+     editingFaqId = faq.id;
+     editingDraft = blankFaqIfMissing(faq);
+     renderFaqManager();
+     return;
     }
 
     if (deleteBtn) {
-      if (confirm("¿Eliminar esta pregunta frecuente? Esta acción no se puede deshacer.")) {
-        socket.emit("agent:faqs:delete", deleteBtn.dataset.id);
-      }
-      return;
+     if (confirm("¿Eliminar esta pregunta frecuente? Esta acción no se puede deshacer.")) {
+      socket.emit("agent:faqs:delete", deleteBtn.dataset.id);
+     }
+     return;
     }
 
     if (cancelBtn) {
-      editingFaqId = null;
-      editingDraft = null;
-      renderFaqManager();
-      return;
+     editingFaqId = null;
+     editingDraft = null;
+     renderFaqManager();
+     return;
     }
 
     if (saveBtn) {
-      const card = saveBtn.closest(".faq-card");
-      const question = { es: "", en: "", pt: "" };
-      const answer = { es: "", en: "", pt: "" };
-      card.querySelectorAll("[data-field]").forEach((el) => {
-        const field = el.dataset.field;
-        const lang = el.dataset.lang;
-        (field === "question" ? question : answer)[lang] = el.value.trim();
-      });
+     const card = saveBtn.closest(".faq-card");
+     const question = { es: "", en: "", pt: "" };
+     const answer = { es: "", en: "", pt: "" };
+     card.querySelectorAll("[data-field]").forEach((el) => {
+      const field = el.dataset.field;
+      const lang = el.dataset.lang;
+      (field === "question" ? question : answer)[lang] = el.value.trim();
+     });
 
-      if (!(question.es || question.en || question.pt) || !(answer.es || answer.en || answer.pt)) {
-        alert("Completa al menos un idioma para la pregunta y uno para la respuesta.");
-        return;
-      }
+     if (!(question.es || question.en || question.pt) || !(answer.es || answer.en || answer.pt)) {
+      alert("Completa al menos un idioma para la pregunta y uno para la respuesta.");
+      return;
+     }
 
-      const id = saveBtn.dataset.id === "new" ? undefined : saveBtn.dataset.id;
-      socket.emit("agent:faqs:save", { id, question, answer });
-      editingFaqId = null;
-      editingDraft = null;
-      // Optimistic close; the incoming faqs:list broadcast will re-render with the saved copy.
-      renderFaqManager();
+     const id = saveBtn.dataset.id === "new" ? undefined : saveBtn.dataset.id;
+     socket.emit("agent:faqs:save", { id, question, answer });
+     editingFaqId = null;
+     editingDraft = null;
+     // Optimistic close; the incoming faqs:list broadcast will re-render with the saved copy.
+     renderFaqManager();
     }
-  });
+   });
 
-  function escapeHtml(str) {
+   // ---- Unanswered question log -------------------------------------------
+   document.getElementById("unanswered-btn").addEventListener("click", () => {
+    unansweredModalOverlay.classList.add("open");
+    renderUnansweredManager();
+   });
+   document.getElementById("unanswered-modal-close").addEventListener("click", () => {
+    unansweredModalOverlay.classList.remove("open");
+   });
+   unansweredModalOverlay.addEventListener("click", (e) => {
+    if (e.target === unansweredModalOverlay) unansweredModalOverlay.classList.remove("open");
+   });
+
+   function renderUnansweredBadge() {
+    const btn = document.getElementById("unanswered-btn");
+    if (!btn) return;
+    btn.textContent = unanswered.length > 0
+    ? `🧠 Preguntas sin responder (${unanswered.length})`
+     : "🧠 Preguntas sin responder";
+   }
+
+   function renderUnansweredManager() {
+    if (!unansweredModalOverlay.classList.contains("open")) return;
+
+    unansweredListEl.innerHTML = "";
+
+    if (unanswered.length === 0) {
+     const empty = document.createElement("div");
+     empty.style.cssText = "font-size:13px;color:#999;padding:8px 2px;";
+     empty.textContent = "No hay preguntas pendientes por ahora.";
+     unansweredListEl.appendChild(empty);
+     return;
+    }
+
+    unanswered.forEach((uq) => {
+     const card = document.createElement("div");
+     card.className = "unanswered-card";
+     const channelLabel = uq.channel === "whatsapp" ? "WhatsApp" : "Web";
+     card.innerHTML = `
+     <div class="unanswered-text">${escapeHtml(uq.text)}</div>
+     <div class="unanswered-meta">${escapeHtml(uq.sessionName || "")} · ${channelLabel} · ${new Date(uq.at).toLocaleString()}</div>
+     <div class="unanswered-actions">
+     <button type="button" class="promote-btn" data-action="promote" data-id="${uq.id}">Convertir en FAQ</button>
+     <button type="button" class="discard-btn" data-action="discard" data-id="${uq.id}">Descartar</button>
+     </div>
+     `;
+     unansweredListEl.appendChild(card);
+    });
+   }
+
+   unansweredListEl.addEventListener("click", (e) => {
+    const promoteBtn = e.target.closest('[data-action="promote"]');
+    const discardBtn = e.target.closest('[data-action="discard"]');
+
+    if (promoteBtn) {
+     const uq = unanswered.find((q) => q.id === promoteBtn.dataset.id);
+     if (!uq) return;
+     unansweredModalOverlay.classList.remove("open");
+     editingFaqId = "new";
+     editingDraft = { question: { es: "", en: "", pt: "" }, answer: { es: "", en: "", pt: "" } };
+     const lang = ["es", "en", "pt"].includes(uq.locale) ? uq.locale : "es";
+     editingDraft.question[lang] = uq.text;
+     socket.emit("agent:unanswered:dismiss", uq.id);
+     faqModalOverlay.classList.add("open");
+     renderFaqManager();
+     return;
+    }
+
+    if (discardBtn) {
+     socket.emit("agent:unanswered:dismiss", discardBtn.dataset.id);
+    }
+   });
+
+   function escapeHtml(str) {
     const div = document.createElement("div");
     div.textContent = str || "";
     return div.innerHTML;
-  }
+   }
 
-  function escapeAttr(str) {
+   function escapeAttr(str) {
     return escapeHtml(str).replace(/"/g, "&quot;");
-  }
-</script>
-<script src="/pwa.js"></script>
-</body>
-</html>
+   }
+  </script>
+  <script src="/pwa.js"></script>
+ </body>
+</html>h
