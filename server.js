@@ -9,10 +9,10 @@
  * before going to production — see README.md "Going to production".
  *
  * Also handles, on top of chat routing:
- *  - IP-based geolocation (country/city) for each visitor
- *  - Emailing a transcript to the visitor when an agent closes the conversation
- *  - A WhatsApp Business (Meta Cloud API) channel that reuses the same FAQ
- *    bot content and lands in the same agent dashboard as web chat sessions
+ * - IP-based geolocation (country/city) for each visitor
+ * - Emailing a transcript to the visitor when an agent closes the conversation
+ * - A WhatsApp Business (Meta Cloud API) channel that reuses the same FAQ
+ *   bot content and lands in the same agent dashboard as web chat sessions
  * All of these features degrade gracefully when not configured (see .env.example).
  */
 
@@ -174,7 +174,29 @@ let faqs = [
       pt: "Você pode nos contatar a qualquer momento em support@cbank.ws, ou continuar conversando aqui mesmo — um agente vai entrar nesta conversa.",
     },
   },
-];
+  ];
+
+// ---- Unanswered question log (free FAQ-learning loop) ------------------
+// When a customer asks something that doesn't match any FAQ (web free-text
+// or a WhatsApp message that isn't a menu number), we log it here instead of
+// trying to auto-answer it. Agents review this list from the dashboard and
+// can promote any entry straight into a permanent FAQ. In-memory, capped at
+// 200 most-recent entries.
+let unansweredQuestions = []; // { id, sessionId, sessionName, channel, text, locale, at }
+
+function logUnansweredQuestion(session, text) {
+  unansweredQuestions.unshift({
+    id: uuidv4(),
+    sessionId: session.id,
+    sessionName: session.name,
+    channel: session.channel || "web",
+    text,
+    locale: session.locale || "es",
+    at: new Date().toISOString(),
+  });
+  if (unansweredQuestions.length > 200) unansweredQuestions.length = 200;
+  io.to("agents").emit("unanswered:list", unansweredQuestions);
+}
 
 // ---- Email transcript templates (es/en/pt) ----------------------------
 const EMAIL_TEMPLATES = {
@@ -210,6 +232,7 @@ function sessionSummary(session) {
     createdAt: session.createdAt,
     closedAt: session.closedAt || null,
     unread: session.unread || 0,
+    needsReply: session.needsReply || false,
     lastMessage: lastMessage ? lastMessage.text : "",
     lastMessageAt: lastMessage ? lastMessage.at : session.createdAt,
     transcriptEmail: session.transcriptEmail || null,
@@ -218,8 +241,8 @@ function sessionSummary(session) {
 
 function broadcastSessionList() {
   const list = Array.from(sessions.values())
-    .sort((a, b) => new Date(b.messages.at(-1)?.at || b.createdAt) - new Date(a.messages.at(-1)?.at || a.createdAt))
-    .map(sessionSummary);
+  .sort((a, b) => new Date(b.messages.at(-1)?.at || b.createdAt) - new Date(a.messages.at(-1)?.at || a.createdAt))
+  .map(sessionSummary);
   io.to("agents").emit("sessions:list", list);
 }
 
@@ -252,27 +275,27 @@ function geolocateIp(ip) {
     }
     if (geoCache.has(ip)) return resolve(geoCache.get(ip));
 
-    const req = http.get(
-      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,city,query`,
-      { timeout: 4000 },
-      (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            const parsed = JSON.parse(data);
-            const result =
-              parsed.status === "success"
-                ? { ip: parsed.query || ip, country: parsed.country || "Unknown", city: parsed.city || "Unknown" }
-                : { ip, country: "Unknown", city: "Unknown" };
-            geoCache.set(ip, result);
-            resolve(result);
-          } catch (e) {
-            resolve({ ip, country: "Unknown", city: "Unknown" });
-          }
-        });
-      }
-    );
+                     const req = http.get(
+                       `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,city,query`,
+                       { timeout: 4000 },
+                       (res) => {
+                         let data = "";
+                         res.on("data", (chunk) => (data += chunk));
+                         res.on("end", () => {
+                           try {
+                             const parsed = JSON.parse(data);
+                             const result =
+                               parsed.status === "success"
+                             ? { ip: parsed.query || ip, country: parsed.country || "Unknown", city: parsed.city || "Unknown" }
+                               : { ip, country: "Unknown", city: "Unknown" };
+                             geoCache.set(ip, result);
+                             resolve(result);
+                           } catch (e) {
+                             resolve({ ip, country: "Unknown", city: "Unknown" });
+                           }
+                         });
+                       }
+                       );
     req.on("timeout", () => {
       req.destroy();
       resolve({ ip, country: "Unknown", city: "Unknown" });
@@ -290,21 +313,21 @@ let mailerConfigured = null; // cache the configured/not-configured check
 function getMailer() {
   if (mailerConfigured !== null) return mailerConfigured ? mailer : null;
 
-  const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
+const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
     mailerConfigured = false;
     console.warn(
       "[cbank] SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASS) — transcript emails will be skipped. See .env.example."
-    );
+      );
     return null;
   }
 
-  mailer = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === "true",
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
+mailer = nodemailer.createTransport({
+  host: SMTP_HOST,
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === "true",
+  auth: { user: SMTP_USER, pass: SMTP_PASS },
+});
   mailerConfigured = true;
   return mailer;
 }
@@ -313,7 +336,7 @@ function escapeHtml(str) {
   return String(str || "").replace(
     /[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
-  );
+    );
 }
 
 function whoLabel(from, clientName) {
@@ -325,20 +348,20 @@ function whoLabel(from, clientName) {
 
 function renderTranscriptText(session) {
   return session.messages
-    .map((m) => `[${new Date(m.at).toLocaleString()}] ${whoLabel(m.from, session.name)}: ${m.text}`)
-    .join("\n");
+  .map((m) => `[${new Date(m.at).toLocaleString()}] ${whoLabel(m.from, session.name)}: ${m.text}`)
+  .join("\n");
 }
 
 function renderTranscriptHtml(session) {
   const rows = session.messages
-    .map((m) => {
-      const who = escapeHtml(whoLabel(m.from, session.name));
-      const text = escapeHtml(m.text).replace(/\n/g, "<br/>");
-      return `<p style="margin:0 0 10px;"><strong>${who}</strong> <span style="color:#888;font-size:12px;">${new Date(
-        m.at
+  .map((m) => {
+    const who = escapeHtml(whoLabel(m.from, session.name));
+    const text = escapeHtml(m.text).replace(/\n/g, "<br/>");
+    return `<p style="margin:0 0 10px;"><strong>${who}</strong> <span style="color:#888;font-size:12px;">${new Date(
+      m.at
       ).toLocaleString()}</span><br/>${text}</p>`;
-    })
-    .join("");
+  })
+  .join("");
   return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;">${rows}</div>`;
 }
 
@@ -354,30 +377,30 @@ async function sendTranscriptEmail(session) {
     return;
   }
 
-  const transporter = getMailer();
+const transporter = getMailer();
   if (!transporter) {
     session.transcriptEmail = { status: "not-configured" };
     finalizeTranscriptStatus(session);
     return;
   }
 
-  const tpl = EMAIL_TEMPLATES[session.locale] || EMAIL_TEMPLATES.es;
+const tpl = EMAIL_TEMPLATES[session.locale] || EMAIL_TEMPLATES.es;
   const dateStr = new Date(session.createdAt).toLocaleDateString();
 
-  try {
-    await transporter.sendMail({
-      from: process.env.MAIL_FROM || `"${tpl.from}" <${process.env.SMTP_USER}>`,
-      to: session.email,
-      subject: tpl.subject(dateStr),
-      text: `${tpl.intro}\n\n${renderTranscriptText(session)}`,
-      html: `<p>${tpl.intro}</p>${renderTranscriptHtml(session)}`,
-    });
-    session.transcriptEmail = { status: "sent", sentAt: new Date().toISOString() };
-  } catch (err) {
-    session.transcriptEmail = { status: "error", error: err.message };
-  }
+try {
+  await transporter.sendMail({
+    from: process.env.MAIL_FROM || `"${tpl.from}" <${process.env.SMTP_USER}>`,
+    to: session.email,
+    subject: tpl.subject(dateStr),
+    text: `${tpl.intro}\n\n${renderTranscriptText(session)}`,
+    html: `<p>${tpl.intro}</p>${renderTranscriptHtml(session)}`,
+  });
+  session.transcriptEmail = { status: "sent", sentAt: new Date().toISOString() };
+} catch (err) {
+  session.transcriptEmail = { status: "error", error: err.message };
+}
 
-  finalizeTranscriptStatus(session);
+finalizeTranscriptStatus(session);
 }
 
 // ---- WhatsApp Business (Meta Cloud API) --------------------------------
@@ -394,41 +417,41 @@ function sendWhatsAppMessage(to, text) {
     if (!whatsappConfigured()) {
       console.warn(
         "[cbank] WhatsApp not configured (WHATSAPP_PHONE_NUMBER_ID/WHATSAPP_ACCESS_TOKEN) — message not sent. See .env.example."
-      );
+        );
       return resolve(null);
     }
 
-    const payload = JSON.stringify({
-      messaging_product: "whatsapp",
-      to,
-      type: "text",
-      text: { body: text },
-    });
+                     const payload = JSON.stringify({
+                       messaging_product: "whatsapp",
+                       to,
+                       type: "text",
+                       text: { body: text },
+                     });
 
-    const req = https.request(
-      {
-        hostname: "graph.facebook.com",
-        path: `/${WHATSAPP_API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload),
-          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-        },
-      },
-      (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(data ? JSON.parse(data) : {});
-          } else {
-            console.error(`[cbank] WhatsApp send failed (${res.statusCode}):`, data);
-            reject(new Error(`WhatsApp API error ${res.statusCode}: ${data}`));
-          }
-        });
-      }
-    );
+                     const req = https.request(
+                       {
+                         hostname: "graph.facebook.com",
+                         path: `/${WHATSAPP_API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+                         method: "POST",
+                         headers: {
+                           "Content-Type": "application/json",
+                           "Content-Length": Buffer.byteLength(payload),
+                           Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+                         },
+                       },
+                       (res) => {
+                         let data = "";
+                         res.on("data", (chunk) => (data += chunk));
+                         res.on("end", () => {
+                           if (res.statusCode >= 200 && res.statusCode < 300) {
+                             resolve(data ? JSON.parse(data) : {});
+                           } else {
+                             console.error(`[cbank] WhatsApp send failed (${res.statusCode}):`, data);
+                             reject(new Error(`WhatsApp API error ${res.statusCode}: ${data}`));
+                           }
+                         });
+                       }
+                       );
     req.on("error", reject);
     req.write(payload);
     req.end();
@@ -487,6 +510,7 @@ function createWhatsAppSession(from, profileName) {
     closedAt: null,
     messages: [],
     unread: 0,
+    needsReply: false,
     transcriptEmail: null,
   };
   sessions.set(id, session);
@@ -510,33 +534,36 @@ async function handleIncomingWhatsAppText(from, text, profileName) {
   const isNewSession = !session;
   if (!session) session = createWhatsAppSession(from, profileName);
 
-  pushWhatsAppMessage(session, "client", text);
+pushWhatsAppMessage(session, "client", text);
 
-  const trimmed = text.trim();
+const trimmed = text.trim();
   const isMenuCommand = /^(menu|menú|hi|hola|oi|start)$/i.test(trimmed);
   const asNumber = Number(trimmed);
   const faqIndex = Number.isInteger(asNumber) ? asNumber - 1 : -1;
   const matchedFaq = faqIndex >= 0 && faqIndex < faqs.length ? faqs[faqIndex] : null;
 
-  try {
-    if (isNewSession || isMenuCommand) {
-      const menuText = buildWhatsAppMenuText(session.locale);
-      pushWhatsAppMessage(session, "bot", menuText);
-      await sendWhatsAppMessage(from, menuText);
-    } else if (matchedFaq) {
-      const answer = faqText(matchedFaq.answer, session.locale);
-      pushWhatsAppMessage(session, "bot", answer);
-      await sendWhatsAppMessage(from, answer);
-    } else {
-      // Free-text question the bot doesn't recognize as a menu pick — leave
-      // it unread for a human agent, same as the web widget.
-      session.unread = (session.unread || 0) + 1;
-    }
-  } catch (err) {
-    console.error("[cbank] Failed to send WhatsApp reply:", err.message);
+try {
+  if (isNewSession || isMenuCommand) {
+    const menuText = buildWhatsAppMenuText(session.locale);
+    pushWhatsAppMessage(session, "bot", menuText);
+    await sendWhatsAppMessage(from, menuText);
+  } else if (matchedFaq) {
+    const answer = faqText(matchedFaq.answer, session.locale);
+    pushWhatsAppMessage(session, "bot", answer);
+    await sendWhatsAppMessage(from, answer);
+  } else {
+    // Free-text question the bot doesn't recognize as a menu pick — leave
+  // it unread for a human agent, same as the web widget, and log it so
+  // agents can review/promote it into a permanent FAQ later.
+  session.unread = (session.unread || 0) + 1;
+    session.needsReply = true;
+    logUnansweredQuestion(session, trimmed);
   }
+} catch (err) {
+  console.error("[cbank] Failed to send WhatsApp reply:", err.message);
+}
 
-  broadcastSessionList();
+broadcastSessionList();
 }
 
 // ---- WhatsApp webhook endpoints -----------------------------------------
@@ -547,9 +574,9 @@ app.get("/webhooks/whatsapp", (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  if (mode === "subscribe" && token && token === process.env.WHATSAPP_VERIFY_TOKEN) {
-    return res.status(200).send(challenge);
-  }
+        if (mode === "subscribe" && token && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+          return res.status(200).send(challenge);
+        }
   return res.sendStatus(403);
 });
 
@@ -558,235 +585,257 @@ app.get("/webhooks/whatsapp", (req, res) => {
 app.post("/webhooks/whatsapp", (req, res) => {
   res.sendStatus(200);
 
-  try {
-    const entry = req.body.entry && req.body.entry[0];
-    const change = entry && entry.changes && entry.changes[0];
-    const value = change && change.value;
-    const messages = value && value.messages;
-    if (!messages || !messages.length) return; // e.g. a delivery/read status update — nothing to do
+         try {
+           const entry = req.body.entry && req.body.entry[0];
+           const change = entry && entry.changes && entry.changes[0];
+           const value = change && change.value;
+           const messages = value && value.messages;
+           if (!messages || !messages.length) return; // e.g. a delivery/read status update — nothing to do
 
-    const contact = value.contacts && value.contacts[0];
-    const profileName = contact && contact.profile && contact.profile.name;
+  const contact = value.contacts && value.contacts[0];
+           const profileName = contact && contact.profile && contact.profile.name;
 
-    messages.forEach((msg) => {
-      if (msg.type !== "text") return; // interactive/media messages: out of scope for this build
-      handleIncomingWhatsAppText(msg.from, msg.text.body, profileName);
-    });
-  } catch (err) {
-    console.error("[cbank] Error handling WhatsApp webhook payload:", err);
-  }
+  messages.forEach((msg) => {
+    if (msg.type !== "text") return; // interactive/media messages: out of scope for this build
+                   handleIncomingWhatsAppText(msg.from, msg.text.body, profileName);
+  });
+         } catch (err) {
+           console.error("[cbank] Error handling WhatsApp webhook payload:", err);
+         }
 });
 
 io.on("connection", (socket) => {
   // FAQ list is global config, not per-session — send it to whoever just
-  // connected (widget or dashboard) right away.
-  socket.emit("faqs:list", faqs);
+      // connected (widget or dashboard) right away.
+      socket.emit("faqs:list", faqs);
 
-  // ---- Client (widget) events -----------------------------------------
-  socket.on("client:join", ({ sessionId, name, email, whatsapp, device, locale }) => {
-    let id = sessionId && sessions.has(sessionId) ? sessionId : uuidv4();
-    const ip = getClientIp(socket);
+      // ---- Client (widget) events -----------------------------------------
+      socket.on("client:join", ({ sessionId, name, email, whatsapp, device, locale }) => {
+        let id = sessionId && sessions.has(sessionId) ? sessionId : uuidv4();
+        const ip = getClientIp(socket);
 
-    if (!sessions.has(id)) {
-      sessions.set(id, {
-        id,
-        name: name || "cbank client",
-        email: email || "",
-        whatsapp: whatsapp || "",
-        device: device || "Unknown device",
-        locale: EMAIL_TEMPLATES[locale] ? locale : "es",
-        channel: "web",
-        location: { ip, country: "Detecting…", city: "Detecting…" },
-        status: "open",
-        createdAt: new Date().toISOString(),
-        closedAt: null,
-        messages: [],
-        unread: 0,
-        transcriptEmail: null,
+                if (!sessions.has(id)) {
+                  sessions.set(id, {
+                    id,
+                    name: name || "cbank client",
+                    email: email || "",
+                    whatsapp: whatsapp || "",
+                    device: device || "Unknown device",
+                    locale: EMAIL_TEMPLATES[locale] ? locale : "es",
+                    channel: "web",
+                    location: { ip, country: "Detecting…", city: "Detecting…" },
+                    status: "open",
+                    createdAt: new Date().toISOString(),
+                    closedAt: null,
+                    messages: [],
+                    unread: 0,
+                    needsReply: false,
+                    transcriptEmail: null,
+                  });
+                } else {
+                  // Returning visitor on the same session — keep contact details current.
+        const existing = sessions.get(id);
+                  if (name) existing.name = name;
+                  if (email) existing.email = email;
+                  if (whatsapp) existing.whatsapp = whatsapp;
+                  if (device) existing.device = device;
+                  if (EMAIL_TEMPLATES[locale]) existing.locale = locale;
+                  if (!existing.location) existing.location = { ip, country: "Detecting…", city: "Detecting…" };
+                }
+
+                socket.data.sessionId = id;
+        socket.data.role = "client";
+        socket.join(`session-${id}`);
+
+                socket.emit("client:joined", {
+                  sessionId: id,
+                  messages: sessions.get(id).messages,
+                });
+
+                broadcastSessionList();
+
+                // Resolve geolocation asynchronously so the join isn't delayed by a
+                // slow (or rate-limited) third-party API call.
+                geolocateIp(ip).then((location) => {
+                  const s = sessions.get(id);
+                  if (!s) return;
+                  s.location = location;
+                  broadcastSessionList();
+                });
       });
-    } else {
-      // Returning visitor on the same session — keep contact details current.
-      const existing = sessions.get(id);
-      if (name) existing.name = name;
-      if (email) existing.email = email;
-      if (whatsapp) existing.whatsapp = whatsapp;
-      if (device) existing.device = device;
-      if (EMAIL_TEMPLATES[locale]) existing.locale = locale;
-      if (!existing.location) existing.location = { ip, country: "Detecting…", city: "Detecting…" };
-    }
 
-    socket.data.sessionId = id;
-    socket.data.role = "client";
-    socket.join(`session-${id}`);
+      socket.on("client:message", ({ sessionId, text }) => {
+        const session = sessions.get(sessionId);
+        if (!session || !text || !text.trim()) return;
 
-    socket.emit("client:joined", {
-      sessionId: id,
-      messages: sessions.get(id).messages,
-    });
+                const message = {
+                  id: uuidv4(),
+                  from: "client",
+                  text: text.trim(),
+                  at: new Date().toISOString(),
+                };
+        session.messages.push(message);
+        session.unread = (session.unread || 0) + 1;
+        session.needsReply = true;
+        logUnansweredQuestion(session, message.text);
 
-    broadcastSessionList();
-
-    // Resolve geolocation asynchronously so the join isn't delayed by a
-    // slow (or rate-limited) third-party API call.
-    geolocateIp(ip).then((location) => {
-      const s = sessions.get(id);
-      if (!s) return;
-      s.location = location;
-      broadcastSessionList();
-    });
-  });
-
-  socket.on("client:message", ({ sessionId, text }) => {
-    const session = sessions.get(sessionId);
-    if (!session || !text || !text.trim()) return;
-
-    const message = {
-      id: uuidv4(),
-      from: "client",
-      text: text.trim(),
-      at: new Date().toISOString(),
-    };
-    session.messages.push(message);
-    session.unread = (session.unread || 0) + 1;
-
-    io.to(`session-${sessionId}`).emit("message:new", message);
-    broadcastSessionList();
-  });
-
-  socket.on("client:typing", ({ sessionId, isTyping }) => {
-    socket.to(`session-${sessionId}`).emit("typing", { from: "client", isTyping });
-  });
-
-  // Visitor clicked a FAQ bot button: log the question as if the visitor
-  // asked it, then answer instantly as "bot" — no agent required. Both
-  // messages land in session history (and the emailed transcript), so an
-  // agent who joins later still has full context.
-  socket.on("client:faq", ({ sessionId, faqId, locale }) => {
-    const session = sessions.get(sessionId);
-    const faq = faqs.find((f) => f.id === faqId);
-    if (!session || !faq) return;
-
-    const loc = EMAIL_TEMPLATES[locale] ? locale : session.locale || "es";
-    const pick = (map) => (map && (map[loc] || map.es || map.en || map.pt)) || "";
-
-    const questionMsg = { id: uuidv4(), from: "client", text: pick(faq.question), at: new Date().toISOString() };
-    const answerMsg = { id: uuidv4(), from: "bot", text: pick(faq.answer), at: new Date().toISOString() };
-    session.messages.push(questionMsg, answerMsg);
-    // Not counted as "unread" — the bot already handled it, no need to page an agent.
-
-    io.to(`session-${sessionId}`).emit("message:new", questionMsg);
-    io.to(`session-${sessionId}`).emit("message:new", answerMsg);
-    broadcastSessionList();
-  });
-
-  // ---- Agent (dashboard) events ----------------------------------------
-  socket.on("agent:join", () => {
-    socket.data.role = "agent";
-    socket.join("agents");
-    broadcastSessionList();
-  });
-
-  socket.on("agent:watch", (sessionId) => {
-    socket.join(`session-${sessionId}`);
-    const session = sessions.get(sessionId);
-    if (session) {
-      session.unread = 0;
-      socket.emit("agent:history", { sessionId, messages: session.messages });
-      broadcastSessionList();
-    }
-  });
-
-  socket.on("agent:message", ({ sessionId, text }) => {
-    const session = sessions.get(sessionId);
-    if (!session || !text || !text.trim()) return;
-
-    const message = {
-      id: uuidv4(),
-      from: "agent",
-      text: text.trim(),
-      at: new Date().toISOString(),
-    };
-    session.messages.push(message);
-
-    io.to(`session-${sessionId}`).emit("message:new", message);
-    broadcastSessionList();
-
-    if (session.channel === "whatsapp") {
-      sendWhatsAppMessage(session.whatsapp, message.text).catch((err) => {
-        console.error("[cbank] Failed to deliver agent reply over WhatsApp:", err.message);
+                io.to(`session-${sessionId}`).emit("message:new", message);
+        broadcastSessionList();
       });
+
+      socket.on("client:typing", ({ sessionId, isTyping }) => {
+        socket.to(`session-${sessionId}`).emit("typing", { from: "client", isTyping });
+      });
+
+      // Visitor clicked a FAQ bot button: log the question as if the visitor
+      // asked it, then answer instantly as "bot" — no agent required. Both
+      // messages land in session history (and the emailed transcript), so an
+      // agent who joins later still has full context.
+      socket.on("client:faq", ({ sessionId, faqId, locale }) => {
+        const session = sessions.get(sessionId);
+        const faq = faqs.find((f) => f.id === faqId);
+        if (!session || !faq) return;
+
+                const loc = EMAIL_TEMPLATES[locale] ? locale : session.locale || "es";
+        const pick = (map) => (map && (map[loc] || map.es || map.en || map.pt)) || "";
+
+                const questionMsg = { id: uuidv4(), from: "client", text: pick(faq.question), at: new Date().toISOString() };
+        const answerMsg = { id: uuidv4(), from: "bot", text: pick(faq.answer), at: new Date().toISOString() };
+        session.messages.push(questionMsg, answerMsg);
+        // Not counted as "unread" — the bot already handled it, no need to page an agent.
+
+                io.to(`session-${sessionId}`).emit("message:new", questionMsg);
+        io.to(`session-${sessionId}`).emit("message:new", answerMsg);
+        broadcastSessionList();
+      });
+
+      // ---- Agent (dashboard) events ----------------------------------------
+      socket.on("agent:join", () => {
+        socket.data.role = "agent";
+        socket.join("agents");
+        broadcastSessionList();
+        socket.emit("unanswered:list", unansweredQuestions);
+      });
+
+      socket.on("agent:watch", (sessionId) => {
+        socket.join(`session-${sessionId}`);
+        const session = sessions.get(sessionId);
+        if (session) {
+          session.unread = 0;
+          socket.emit("agent:history", { sessionId, messages: session.messages });
+          broadcastSessionList();
+        }
+      });
+
+      socket.on("agent:message", ({ sessionId, text }) => {
+        const session = sessions.get(sessionId);
+        if (!session || !text || !text.trim()) return;
+
+                const message = {
+                  id: uuidv4(),
+                  from: "agent",
+                  text: text.trim(),
+                  at: new Date().toISOString(),
+                };
+        session.messages.push(message);
+        session.needsReply = false;
+
+                io.to(`session-${sessionId}`).emit("message:new", message);
+        broadcastSessionList();
+
+                if (session.channel === "whatsapp") {
+                  sendWhatsAppMessage(session.whatsapp, message.text).catch((err) => {
+                    console.error("[cbank] Failed to deliver agent reply over WhatsApp:", err.message);
+                  });
+                }
+      });
+
+      socket.on("agent:typing", ({ sessionId, isTyping }) => {
+        socket.to(`session-${sessionId}`).emit("typing", { from: "agent", isTyping });
+      });
+
+      // FAQ bot management — create (no id) or update (id) a question/answer
+      // pair. Each field is a { es, en, pt } map; at least one language must be
+      // filled in for question and for answer, so a bare-minimum FAQ still
+      // resolves to *something* via the es -> en -> pt fallback used everywhere
+      // else in this app.
+      socket.on("agent:faqs:save", ({ id, question, answer } = {}) => {
+        const q = {
+          es: ((question && question.es) || "").trim(),
+          en: ((question && question.en) || "").trim(),
+          pt: ((question && question.pt) || "").trim(),
+        };
+        const a = {
+          es: ((answer && answer.es) || "").trim(),
+          en: ((answer && answer.en) || "").trim(),
+          pt: ((answer && answer.pt) || "").trim(),
+        };
+        if (!(q.es || q.en || q.pt) || !(a.es || a.en || a.pt)) return;
+
+  if (id) {
+    const existing = faqs.find((f) => f.id === id);
+    if (existing) {
+      existing.question = q;
+      existing.answer = a;
     }
-  });
+  } else {
+    faqs.push({ id: uuidv4(), question: q, answer: a });
+  }
+        io.emit("faqs:list", faqs);
+      });
 
-  socket.on("agent:typing", ({ sessionId, isTyping }) => {
-    socket.to(`session-${sessionId}`).emit("typing", { from: "agent", isTyping });
-  });
+socket.on("agent:faqs:delete", (id) => {
+  faqs = faqs.filter((f) => f.id !== id);
+  io.emit("faqs:list", faqs);
+});
 
-  // FAQ bot management — create (no id) or update (id) a question/answer
-  // pair. Each field is a { es, en, pt } map; at least one language must be
-  // filled in for question and for answer, so a bare-minimum FAQ still
-  // resolves to *something* via the es -> en -> pt fallback used everywhere
-  // else in this app.
-  socket.on("agent:faqs:save", ({ id, question, answer } = {}) => {
-    const q = {
-      es: ((question && question.es) || "").trim(),
-      en: ((question && question.en) || "").trim(),
-      pt: ((question && question.pt) || "").trim(),
-    };
-    const a = {
-      es: ((answer && answer.es) || "").trim(),
-      en: ((answer && answer.en) || "").trim(),
-      pt: ((answer && answer.pt) || "").trim(),
-    };
-    if (!(q.es || q.en || q.pt) || !(a.es || a.en || a.pt)) return;
+socket.on("agent:close", (sessionId) => {
+  const session = sessions.get(sessionId);
+  if (!session) return;
 
-    if (id) {
-      const existing = faqs.find((f) => f.id === id);
-      if (existing) {
-        existing.question = q;
-        existing.answer = a;
-      }
-    } else {
-      faqs.push({ id: uuidv4(), question: q, answer: a });
-    }
-    io.emit("faqs:list", faqs);
-  });
+          session.status = "closed";
+  session.closedAt = new Date().toISOString();
+  session.needsReply = false;
+  session.transcriptEmail = { status: "sending" };
 
-  socket.on("agent:faqs:delete", (id) => {
-    faqs = faqs.filter((f) => f.id !== id);
-    io.emit("faqs:list", faqs);
-  });
+          io.to(`session-${sessionId}`).emit("session:closed");
+  broadcastSessionList();
 
-  socket.on("agent:close", (sessionId) => {
-    const session = sessions.get(sessionId);
-    if (!session) return;
+          // Fire-and-forget: updates session.transcriptEmail and rebroadcasts once done.
+          sendTranscriptEmail(session);
+});
 
-    session.status = "closed";
-    session.closedAt = new Date().toISOString();
-    session.transcriptEmail = { status: "sending" };
+socket.on("agent:reopen", (sessionId) => {
+  const session = sessions.get(sessionId);
+  if (!session) return;
 
-    io.to(`session-${sessionId}`).emit("session:closed");
-    broadcastSessionList();
+          session.status = "open";
+  session.closedAt = null;
 
-    // Fire-and-forget: updates session.transcriptEmail and rebroadcasts once done.
-    sendTranscriptEmail(session);
-  });
+          io.to(`session-${sessionId}`).emit("session:reopened");
+  broadcastSessionList();
+});
 
-  socket.on("disconnect", () => {
-    // Sessions persist in memory so a client reconnecting (e.g. page refresh)
-    // with the same sessionId can resume the conversation.
-  });
+socket.on("agent:unanswered:dismiss", (id) => {
+  unansweredQuestions = unansweredQuestions.filter((q) => q.id !== id);
+  io.to("agents").emit("unanswered:list", unansweredQuestions);
+});
+
+socket.on("disconnect", () => {
+  // Sessions persist in memory so a client reconnecting (e.g. page refresh)
+          // with the same sessionId can resume the conversation.
+});
 });
 
 server.listen(PORT, () => {
   console.log(`cbank live chat server running at http://localhost:${PORT}`);
-  console.log(`  Widget demo:     http://localhost:${PORT}/widget-demo.html`);
+  console.log(`  Widget demo: http://localhost:${PORT}/widget-demo.html`);
   console.log(`  Agent dashboard: http://localhost:${PORT}/agent-dashboard.html`);
   console.log(`  WhatsApp webhook: http://localhost:${PORT}/webhooks/whatsapp`);
   getMailer(); // logs a warning immediately if SMTP isn't configured, instead of only on first close
-  if (!whatsappConfigured()) {
-    console.warn(
-      "[cbank] WhatsApp not configured (WHATSAPP_PHONE_NUMBER_ID/WHATSAPP_ACCESS_TOKEN) — incoming messages will be logged but replies won't be sent. See .env.example."
-    );
-  }
+              if (!whatsappConfigured()) {
+                console.warn(
+                  "[cbank] WhatsApp not configured (WHATSAPP_PHONE_NUMBER_ID/WHATSAPP_ACCESS_TOKEN) — incoming messages will be logged but replies won't be sent. See .env.example."
+                  );
+              }
 });
