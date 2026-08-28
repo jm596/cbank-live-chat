@@ -209,6 +209,8 @@ const ESCALATION_DELAY_MS = 2 * 60 * 1000;
 const OWNER_WHATSAPP = "59897982374";
 const unansweredTimers = new Map(); // sessionId -> Timeout
 
+const INFO_LINK_LINE = "+INFO :: linktr.ee/cbank.ws";
+
 const ESCALATION_COPY = {
   es: {
     waiting:
@@ -260,6 +262,7 @@ function scheduleEscalation(session, triggerText) {
       const faqList = buildFaqListText(current.locale);
       if (faqList) botText += "\n\n" + faqList;
     }
+    botText += "\n\n" + INFO_LINK_LINE;
 
     // `showFaq` rides along on the message itself (not a separate one-shot
     // socket event) so it survives a dropped/reconnecting connection: if the

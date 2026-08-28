@@ -535,6 +535,9 @@
       '      <input id="cbank-chat-input" type="text" autocomplete="off" />' +
       '      <button id="cbank-chat-send"></button>' +
       "    </div>" +
+      '    <div id="cbank-chat-footer">' +
+      '      <a href="http://linktr.ee/cbank.ws" target="_blank" rel="noopener">+INFO&nbsp;::&nbsp;linktr.ee/cbank.ws</a>' +
+      "    </div>" +
       "  </div>" +
       "</div>";
 
@@ -630,6 +633,9 @@
       "#cbank-chat-input:focus{border-color:#0b3d91;}" +
       "#cbank-chat-send{background:#0b3d91;color:#fff;border:none;border-radius:20px;padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;}" +
       "#cbank-chat-send:hover{background:#092f70;}" +
+      "#cbank-chat-footer{background:#ffd400;text-align:center;padding:8px 10px;border-top:1px solid #e2c200;}" +
+      "#cbank-chat-footer a{color:#0b3d91;font-weight:800;font-size:14px;text-decoration:none;letter-spacing:0.2px;}" +
+      "#cbank-chat-footer a:hover{text-decoration:underline;}" +
       "@media (max-width:420px){#cbank-chat-window{right:-12px;}}";
 
     var style = document.createElement("style");
