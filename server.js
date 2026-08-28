@@ -234,8 +234,14 @@ function clearEscalationTimer(sessionId) {
 
 function forwardQueryToOwnerWhatsApp(session, text) {
   const channelLabel = session.channel === "whatsapp" ? "WhatsApp" : "Web";
-  const body = `CHAT User\n\nNombre: ${session.name}\nCanal: ${channelLabel}\nConsulta: ${text || "(sin texto)"}`;
-  sendWhatsAppMessage(OWNER_WHATSAPP, body).catch((err) => {
+  // Uses an approved template (not free-form text) because the owner's
+  // number likely hasn't messaged the business number in the last 24h,
+  // which would otherwise fail with Meta error 131047.
+  sendWhatsAppTemplate(OWNER_WHATSAPP, "cbank_unanswered_query_alert", "es", [
+    session.name || "Cliente",
+    channelLabel,
+    text || "(sin texto)",
+  ]).catch((err) => {
     console.error("[cbank] Failed to forward unanswered query to owner WhatsApp:", err.message);
   });
 }
@@ -535,6 +541,66 @@ function sendWhatsAppMessage(to, text) {
                          });
                        }
                        );
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+// Business-initiated WhatsApp template send. Unlike sendWhatsAppMessage
+// (free-form text), this works even outside the 24h customer-service window
+// -- required for proactive alerts like the owner's unanswered-query ping,
+// since that recipient may never have messaged the business number.
+// The template itself must already be approved in WhatsApp Manager.
+function sendWhatsAppTemplate(to, templateName, langCode, bodyParams) {
+  return new Promise((resolve, reject) => {
+    if (!whatsappConfigured()) {
+      console.warn(
+        "[cbank] WhatsApp not configured (WHATSAPP_PHONE_NUMBER_ID/WHATSAPP_ACCESS_TOKEN) — template not sent. See .env.example."
+      );
+      return resolve(null);
+    }
+
+    const payload = JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: langCode },
+        components: [
+          {
+            type: "body",
+            parameters: bodyParams.map((text) => ({ type: "text", text })),
+          },
+        ],
+      },
+    });
+
+    const req = https.request(
+      {
+        hostname: "graph.facebook.com",
+        path: `/${WHATSAPP_API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(data ? JSON.parse(data) : {});
+          } else {
+            console.error(`[cbank] WhatsApp template send failed (${res.statusCode}):`, data);
+            reject(new Error(`WhatsApp template API error ${res.statusCode}: ${data}`));
+          }
+        });
+      }
+    );
     req.on("error", reject);
     req.write(payload);
     req.end();
