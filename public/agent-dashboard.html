@@ -63,6 +63,10 @@
   .msg-bot { align-self: flex-start; background: #eaf6f0; border: 1px solid #c9ebd9; border-bottom-left-radius: 4px; }
   .msg-bot .msg-label { display: block; font-size: 10.5px; font-weight: 700; color: #1e8a5f; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; }
   .msg-system { align-self: center; color: #999; font-style: italic; font-size: 12px; white-space: normal; }
+  .msg-time { display: block; font-size: 10px; margin-top: 4px; }
+  .msg-client .msg-time, .msg-bot .msg-time { color: #9aa1ab; text-align: left; }
+  .msg-agent .msg-time { color: rgba(255,255,255,0.75); text-align: right; }
+  .msg-system .msg-time { display: none; }
 
   #typing-indicator { font-size: 12px; color: #999; padding: 0 24px 4px; display: none; }
 
@@ -425,16 +429,22 @@
     messages.forEach(appendMessage);
    }
 
+   function formatMsgTime(at) {
+    try {
+     const d = at ? new Date(at) : new Date();
+     return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    } catch (e) {
+     return "";
+    }
+   }
+
    function appendMessage(message) {
     const messagesEl = document.getElementById("messages");
     if (!messagesEl) return;
     const row = document.createElement("div");
     row.className = "msg msg-" + message.from;
-    if (message.from === "bot") {
-     row.innerHTML = '<span class="msg-label">cbank Bot</span>' + escapeHtml(message.text);
-    } else {
-     row.textContent = message.text;
-    }
+    const label = message.from === "bot" ? '<span class="msg-label">cbank Bot</span>' : "";
+    row.innerHTML = label + escapeHtml(message.text) + '<span class="msg-time">' + formatMsgTime(message.at) + "</span>";
     messagesEl.appendChild(row);
     messagesEl.scrollTop = messagesEl.scrollHeight;
    }

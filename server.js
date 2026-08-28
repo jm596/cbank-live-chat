@@ -198,6 +198,82 @@ function logUnansweredQuestion(session, text) {
   io.to("agents").emit("unanswered:list", unansweredQuestions);
 }
 
+// ---- 2-minute no-reply escalation ---------------------------------------
+// If nobody (agent) has replied to a client message within this window, the
+// bot proactively steps in: offers the FAQ menu, tells the visitor they're
+// next in line with an expected 1-3 minute delay, and pings the owner's own
+// WhatsApp with the pending query so it doesn't get missed. One timer per
+// session; every new unanswered client message restarts the clock, and it's
+// cancelled the moment an agent actually replies or closes the chat.
+const ESCALATION_DELAY_MS = 2 * 60 * 1000;
+const OWNER_WHATSAPP = "59897982374";
+const unansweredTimers = new Map(); // sessionId -> Timeout
+
+const ESCALATION_COPY = {
+  es: {
+    waiting:
+      "Gracias por tu paciencia \u{1F64F} Tu consulta es la próxima en ser respondida por un agente — puede haber una demora de 1 a 3 minutos. Mientras tanto, te dejamos las preguntas frecuentes por si te sirven:",
+  },
+  en: {
+    waiting:
+      "Thanks for your patience \u{1F64F} Your question is next in line to be answered by an agent — there may be a delay of 1 to 3 minutes. In the meantime, here are some frequently asked questions that might help:",
+  },
+  pt: {
+    waiting:
+      "Obrigado pela paciência \u{1F64F} Sua pergunta é a próxima a ser respondida por um agente — pode haver um atraso de 1 a 3 minutos. Enquanto isso, aqui estão algumas perguntas frequentes que podem ajudar:",
+  },
+};
+
+function clearEscalationTimer(sessionId) {
+  const timer = unansweredTimers.get(sessionId);
+  if (timer) {
+    clearTimeout(timer);
+    unansweredTimers.delete(sessionId);
+  }
+}
+
+function forwardQueryToOwnerWhatsApp(session, text) {
+  const channelLabel = session.channel === "whatsapp" ? "WhatsApp" : "Web";
+  const body = `CHAT User\n\nNombre: ${session.name}\nCanal: ${channelLabel}\nConsulta: ${text || "(sin texto)"}`;
+  sendWhatsAppMessage(OWNER_WHATSAPP, body).catch((err) => {
+    console.error("[cbank] Failed to forward unanswered query to owner WhatsApp:", err.message);
+  });
+}
+
+function scheduleEscalation(session, triggerText) {
+  clearEscalationTimer(session.id);
+  const timer = setTimeout(() => {
+    unansweredTimers.delete(session.id);
+    const current = sessions.get(session.id);
+    // Someone already replied, or the chat was closed in the meantime — nothing to do.
+    if (!current || !current.needsReply || current.status === "closed") return;
+
+    const copy = ESCALATION_COPY[current.locale] || ESCALATION_COPY.es;
+    let botText = copy.waiting;
+    if (current.channel === "whatsapp") {
+      const faqList = buildFaqListText(current.locale);
+      if (faqList) botText += "\n\n" + faqList;
+    }
+
+    const message = { id: uuidv4(), from: "bot", text: botText, at: new Date().toISOString() };
+    current.messages.push(message);
+    io.to(`session-${current.id}`).emit("message:new", message);
+
+    if (current.channel === "whatsapp") {
+      sendWhatsAppMessage(current.whatsapp, botText).catch((err) => {
+        console.error("[cbank] Failed to deliver escalation message over WhatsApp:", err.message);
+      });
+    } else {
+      // Web widget already knows the FAQ list — just pop the panel open.
+      io.to(`session-${current.id}`).emit("faq:show");
+    }
+
+    broadcastSessionList();
+    forwardQueryToOwnerWhatsApp(current, triggerText);
+  }, ESCALATION_DELAY_MS);
+  unansweredTimers.set(session.id, timer);
+}
+
 // ---- Email transcript templates (es/en/pt) ----------------------------
 const EMAIL_TEMPLATES = {
   es: {
@@ -489,6 +565,13 @@ function buildWhatsAppMenuText(locale) {
   return `${copy.greeting}\n\n${lines.join("\n")}${copy.menuFooter}`;
 }
 
+// Same numbered FAQ list as the WhatsApp menu, but without the greeting —
+// used to tack the FAQ list onto the 2-minute no-reply escalation message.
+function buildFaqListText(locale) {
+  if (!faqs.length) return "";
+  return faqs.map((f, i) => `${i + 1}. ${faqText(f.question, locale)}`).join("\n");
+}
+
 function findWhatsAppSession(from) {
   const existingId = whatsappSessions.get(from);
   return existingId ? sessions.get(existingId) : null;
@@ -558,6 +641,7 @@ try {
   session.unread = (session.unread || 0) + 1;
     session.needsReply = true;
     logUnansweredQuestion(session, trimmed);
+    scheduleEscalation(session, trimmed);
   }
 } catch (err) {
   console.error("[cbank] Failed to send WhatsApp reply:", err.message);
@@ -678,6 +762,7 @@ io.on("connection", (socket) => {
         session.unread = (session.unread || 0) + 1;
         session.needsReply = true;
         logUnansweredQuestion(session, message.text);
+        scheduleEscalation(session, message.text);
 
                 io.to(`session-${sessionId}`).emit("message:new", message);
         broadcastSessionList();
@@ -739,6 +824,7 @@ io.on("connection", (socket) => {
                 };
         session.messages.push(message);
         session.needsReply = false;
+        clearEscalationTimer(sessionId);
 
                 io.to(`session-${sessionId}`).emit("message:new", message);
         broadcastSessionList();
@@ -796,6 +882,7 @@ socket.on("agent:close", (sessionId) => {
           session.status = "closed";
   session.closedAt = new Date().toISOString();
   session.needsReply = false;
+  clearEscalationTimer(sessionId);
   session.transcriptEmail = { status: "sending" };
 
           io.to(`session-${sessionId}`).emit("session:closed");

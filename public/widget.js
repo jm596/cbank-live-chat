@@ -292,17 +292,17 @@
         joined = true;
         ui.messagesEl.innerHTML = "";
         if (data.messages.length === 0) {
-          appendMessage(ui, "agent", t("welcomeMessage", { name: state.profile.name }));
+          appendMessage(ui, "agent", t("welcomeMessage", { name: state.profile.name }), new Date().toISOString());
           maybeShowWelcomeMenu();
         } else {
           data.messages.forEach(function (m) {
-            appendMessage(ui, m.from, m.text);
+            appendMessage(ui, m.from, m.text, m.at);
           });
         }
       });
 
       socket.on("message:new", function (message) {
-        appendMessage(ui, message.from, message.text);
+        appendMessage(ui, message.from, message.text, message.at);
         if ((message.from === "agent" || message.from === "bot") && !ui.root.classList.contains("cbank-open")) {
           unreadCount++;
           updateBadge(ui, unreadCount);
@@ -316,8 +316,16 @@
       });
 
       socket.on("session:closed", function () {
-        appendMessage(ui, "system", t("closedMessage"));
+        appendMessage(ui, "system", t("closedMessage"), new Date().toISOString());
         ui.faqPanel.style.display = "none";
+      });
+
+      // Server tells us the visitor has waited too long without a human
+      // reply: pop the FAQ menu back open so they have something useful to
+      // do while they wait (the "you're next" text itself arrives as a
+      // normal bot message via message:new).
+      socket.on("faq:show", function () {
+        if (state.faqs.length > 0) ui.faqPanel.style.display = "flex";
       });
     }
 
@@ -443,7 +451,16 @@
     }
   }
 
-  function appendMessage(ui, from, text) {
+  function formatMsgTime(at) {
+    try {
+      var d = at ? new Date(at) : new Date();
+      return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function appendMessage(ui, from, text, at) {
     var row = document.createElement("div");
     row.className = "cbank-msg cbank-msg-" + from;
     if (from === "bot") {
@@ -456,6 +473,10 @@
     bubble.className = "cbank-bubble-text";
     bubble.textContent = text;
     row.appendChild(bubble);
+    var time = document.createElement("div");
+    time.className = "cbank-msg-time";
+    time.textContent = formatMsgTime(at);
+    row.appendChild(time);
     ui.messagesEl.appendChild(row);
     ui.messagesEl.scrollTop = ui.messagesEl.scrollHeight;
   }
@@ -592,6 +613,10 @@
       ".cbank-msg-bot{align-self:flex-start;background:#eaf6f0;color:#1a1a1a;border:1px solid #c9ebd9;border-bottom-left-radius:4px;}" +
       ".cbank-bot-label{font-size:10.5px;font-weight:700;color:#1e8a5f;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px;}" +
       ".cbank-msg-system{align-self:center;background:transparent;color:#8a8f98;font-size:12px;font-style:italic;white-space:normal;}" +
+      ".cbank-msg-time{font-size:10px;color:#9aa1ab;margin-top:3px;}" +
+      ".cbank-msg-client .cbank-msg-time{text-align:right;}" +
+      ".cbank-msg-agent .cbank-msg-time,.cbank-msg-bot .cbank-msg-time{text-align:left;}" +
+      ".cbank-msg-system .cbank-msg-time{display:none;}" +
       "#cbank-chat-typing{display:none;font-size:12px;color:#8a8f98;padding:0 14px 6px;}" +
 
       "#cbank-faq-panel{display:none;flex-direction:column;gap:6px;padding:12px 14px;background:#fff;border-top:1px solid #e2e6ee;max-height:180px;overflow-y:auto;}" +
