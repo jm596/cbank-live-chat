@@ -296,13 +296,13 @@
           maybeShowWelcomeMenu();
         } else {
           data.messages.forEach(function (m) {
-            appendMessage(ui, m.from, m.text, m.at);
+            appendMessage(ui, m.from, m.text, m.at, m.showFaq);
           });
         }
       });
 
       socket.on("message:new", function (message) {
-        appendMessage(ui, message.from, message.text, message.at);
+        appendMessage(ui, message.from, message.text, message.at, message.showFaq);
         if ((message.from === "agent" || message.from === "bot") && !ui.root.classList.contains("cbank-open")) {
           unreadCount++;
           updateBadge(ui, unreadCount);
@@ -318,14 +318,6 @@
       socket.on("session:closed", function () {
         appendMessage(ui, "system", t("closedMessage"), new Date().toISOString());
         ui.faqPanel.style.display = "none";
-      });
-
-      // Server tells us the visitor has waited too long without a human
-      // reply: pop the FAQ menu back open so they have something useful to
-      // do while they wait (the "you're next" text itself arrives as a
-      // normal bot message via message:new).
-      socket.on("faq:show", function () {
-        if (state.faqs.length > 0) ui.faqPanel.style.display = "flex";
       });
     }
 
@@ -460,7 +452,7 @@
     }
   }
 
-  function appendMessage(ui, from, text, at) {
+  function appendMessage(ui, from, text, at, showFaq) {
     var row = document.createElement("div");
     row.className = "cbank-msg cbank-msg-" + from;
     if (from === "bot") {
@@ -479,6 +471,12 @@
     row.appendChild(time);
     ui.messagesEl.appendChild(row);
     ui.messagesEl.scrollTop = ui.messagesEl.scrollHeight;
+
+    // The 2-minute no-reply escalation message carries this flag so the FAQ
+    // panel pops back open — checked here (not just on live message:new) so
+    // it still works if this message only shows up via the session-history
+    // replay after a reconnect (e.g. the live socket event got dropped).
+    if (showFaq && state.faqs.length > 0) ui.faqPanel.style.display = "flex";
   }
 
   function updateBadge(ui, count) {

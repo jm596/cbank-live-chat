@@ -255,7 +255,17 @@ function scheduleEscalation(session, triggerText) {
       if (faqList) botText += "\n\n" + faqList;
     }
 
-    const message = { id: uuidv4(), from: "bot", text: botText, at: new Date().toISOString() };
+    // `showFaq` rides along on the message itself (not a separate one-shot
+    // socket event) so it survives a dropped/reconnecting connection: if the
+    // live socket event is missed, the widget still picks it up when it
+    // replays session history after reconnecting via client:joined.
+    const message = {
+      id: uuidv4(),
+      from: "bot",
+      text: botText,
+      at: new Date().toISOString(),
+      showFaq: current.channel !== "whatsapp",
+    };
     current.messages.push(message);
     io.to(`session-${current.id}`).emit("message:new", message);
 
@@ -263,9 +273,6 @@ function scheduleEscalation(session, triggerText) {
       sendWhatsAppMessage(current.whatsapp, botText).catch((err) => {
         console.error("[cbank] Failed to deliver escalation message over WhatsApp:", err.message);
       });
-    } else {
-      // Web widget already knows the FAQ list — just pop the panel open.
-      io.to(`session-${current.id}`).emit("faq:show");
     }
 
     broadcastSessionList();
@@ -674,7 +681,21 @@ app.post("/webhooks/whatsapp", (req, res) => {
            const change = entry && entry.changes && entry.changes[0];
            const value = change && change.value;
            const messages = value && value.messages;
-           if (!messages || !messages.length) return; // e.g. a delivery/read status update — nothing to do
+           if (!messages || !messages.length) {
+             // Delivery/read status updates land here — log failures so we can
+             // see *why* an outbound message (like the owner alert) didn't land.
+             const statuses = value && value.statuses;
+             if (statuses && statuses.length) {
+               statuses.forEach((s) => {
+                 if (s.status === "failed" && s.errors) {
+                   console.error("[cbank] WhatsApp delivery FAILED:", JSON.stringify(s.errors));
+                 } else {
+                   console.log(`[cbank] WhatsApp status update: ${s.status} for ${s.recipient_id}`);
+                 }
+               });
+             }
+             return;
+           }
 
   const contact = value.contacts && value.contacts[0];
            const profileName = contact && contact.profile && contact.profile.name;
