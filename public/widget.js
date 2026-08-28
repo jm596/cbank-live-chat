@@ -529,6 +529,7 @@
       '    <div id="cbank-faq-panel">' +
       '      <div id="cbank-faq-title"></div>' +
       '      <div id="cbank-faq-list"></div>' +
+      '      <div id="cbank-faq-footer"><a href="http://linktr.ee/cbank.ws" target="_blank" rel="noopener">+Info:&nbsp;linktr.ee/cbank.ws</a></div>' +
       "    </div>" +
       '    <button id="cbank-faq-toggle" type="button"></button>' +
       '    <div id="cbank-chat-inputbar">' +
@@ -620,11 +621,14 @@
       ".cbank-msg-system .cbank-msg-time{display:none;}" +
       "#cbank-chat-typing{display:none;font-size:12px;color:#8a8f98;padding:0 14px 6px;}" +
 
-      "#cbank-faq-panel{display:none;flex-direction:column;gap:6px;padding:12px 14px;background:#fff;border-top:1px solid #e2e6ee;max-height:180px;overflow-y:auto;}" +
+      "#cbank-faq-panel{display:none;flex-direction:column;gap:10px;padding:12px 14px;background:#fff;border-top:1px solid #e2e6ee;max-height:240px;overflow-y:auto;}" +
       "#cbank-faq-title{font-size:11.5px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px;}" +
-      "#cbank-faq-list{display:flex;flex-direction:column;gap:6px;}" +
-      ".cbank-faq-item{text-align:left;background:#f4f6fb;border:1px solid #e2e6ee;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#0b3d91;cursor:pointer;font-family:inherit;}" +
+      "#cbank-faq-list{display:flex;flex-direction:column;gap:12px;}" +
+      ".cbank-faq-item{text-align:left;background:#f4f6fb;border:1px solid #e2e6ee;border-radius:8px;padding:12px 14px;font-size:15px;line-height:1.5;color:#0b3d91;cursor:pointer;font-family:inherit;}" +
       ".cbank-faq-item:hover{background:#eaf0fc;border-color:#c7d6f5;}" +
+      "#cbank-faq-footer{text-align:center;padding:8px 6px 2px;}" +
+      "#cbank-faq-footer a{color:#0b3d91;background:#ffd400;font-weight:800;font-size:13.5px;text-decoration:none;padding:5px 10px;border-radius:6px;display:inline-block;}" +
+      "#cbank-faq-footer a:hover{text-decoration:underline;}" +
       "#cbank-faq-toggle{display:none;background:#fff;border:none;border-top:1px solid #e2e6ee;color:#0b3d91;font-size:12px;font-weight:600;padding:8px 14px;cursor:pointer;text-align:left;}" +
       "#cbank-faq-toggle:hover{background:#f4f6fb;}" +
 
