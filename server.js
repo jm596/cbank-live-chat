@@ -174,6 +174,19 @@ let faqs = [
       pt: "Você pode nos contatar a qualquer momento em support@cbank.ws, ou continuar conversando aqui mesmo — um agente vai entrar nesta conversa.",
     },
   },
+  {
+    id: uuidv4(),
+    question: {
+      es: "¿Dónde descargo la app?",
+      en: "Where can I download the app?",
+      pt: "Onde eu baixo o aplicativo?",
+    },
+    answer: {
+      es: "Links Descarga:\nGOOGLE PLAY :: https://play.google.com/store/apps/details?id=com.cbank.cbankapp\nAPPLE STORE :: https://apps.apple.com/uy/app/cbank-card/id6757606839",
+      en: "Download links:\nGOOGLE PLAY :: https://play.google.com/store/apps/details?id=com.cbank.cbankapp\nAPPLE STORE :: https://apps.apple.com/uy/app/cbank-card/id6757606839",
+      pt: "Links de download:\nGOOGLE PLAY :: https://play.google.com/store/apps/details?id=com.cbank.cbankapp\nAPPLE STORE :: https://apps.apple.com/uy/app/cbank-card/id6757606839",
+    },
+  },
   ];
 
 // ---- Unanswered question log (free FAQ-learning loop) ------------------
