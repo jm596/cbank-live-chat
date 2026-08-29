@@ -529,7 +529,7 @@
       '    <div id="cbank-faq-panel">' +
       '      <div id="cbank-faq-title"></div>' +
       '      <div id="cbank-faq-list"></div>' +
-      '      <div id="cbank-faq-footer"><a href="http://linktr.ee/cbank.ws" target="_blank" rel="noopener">+Info:&nbsp;linktr.ee/cbank.ws</a></div>' +
+      '      <div id="cbank-faq-footer"><a href="https://linktr.ee/cbank.ws" target="_blank" rel="noopener">Toda la Info&nbsp;&gt;&gt;&gt;&nbsp;linktr.ee/cbank.ws</a></div>' +
       "    </div>" +
       '    <button id="cbank-faq-toggle" type="button"></button>' +
       '    <div id="cbank-chat-inputbar">' +
@@ -537,7 +537,7 @@
       '      <button id="cbank-chat-send"></button>' +
       "    </div>" +
       '    <div id="cbank-chat-footer">' +
-      '      <a href="http://linktr.ee/cbank.ws" target="_blank" rel="noopener">+INFO&nbsp;::&nbsp;linktr.ee/cbank.ws</a>' +
+      '      <a href="https://linktr.ee/cbank.ws" target="_blank" rel="noopener">Toda la Info&nbsp;&gt;&gt;&gt;&nbsp;linktr.ee/cbank.ws</a>' +
       "    </div>" +
       "  </div>" +
       "</div>";
@@ -626,8 +626,8 @@
       "#cbank-faq-list{display:flex;flex-direction:column;gap:12px;}" +
       ".cbank-faq-item{text-align:left;background:#f4f6fb;border:1px solid #e2e6ee;border-radius:8px;padding:12px 14px;font-size:15px;line-height:1.5;color:#0b3d91;cursor:pointer;font-family:inherit;}" +
       ".cbank-faq-item:hover{background:#eaf0fc;border-color:#c7d6f5;}" +
-      "#cbank-faq-footer{text-align:center;padding:8px 6px 2px;}" +
-      "#cbank-faq-footer a{color:#0b3d91;background:#ffd400;font-weight:800;font-size:13.5px;text-decoration:none;padding:5px 10px;border-radius:6px;display:inline-block;}" +
+      "#cbank-faq-footer{text-align:center;padding:10px 6px 4px;}" +
+      "#cbank-faq-footer a{color:#0b3d91;background:#ffd400;font-weight:800;font-size:20px;line-height:1.3;text-decoration:none;padding:6px 12px;border-radius:6px;display:inline-block;}" +
       "#cbank-faq-footer a:hover{text-decoration:underline;}" +
       "#cbank-faq-toggle{display:none;background:#fff;border:none;border-top:1px solid #e2e6ee;color:#0b3d91;font-size:12px;font-weight:600;padding:8px 14px;cursor:pointer;text-align:left;}" +
       "#cbank-faq-toggle:hover{background:#f4f6fb;}" +
@@ -637,8 +637,8 @@
       "#cbank-chat-input:focus{border-color:#0b3d91;}" +
       "#cbank-chat-send{background:#0b3d91;color:#fff;border:none;border-radius:20px;padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;}" +
       "#cbank-chat-send:hover{background:#092f70;}" +
-      "#cbank-chat-footer{background:#ffd400;text-align:center;padding:8px 10px;border-top:1px solid #e2c200;}" +
-      "#cbank-chat-footer a{color:#0b3d91;font-weight:800;font-size:14px;text-decoration:none;letter-spacing:0.2px;}" +
+      "#cbank-chat-footer{background:#ffd400;text-align:center;padding:9px 10px;border-top:1px solid #e2c200;}" +
+      "#cbank-chat-footer a{color:#0b3d91;font-weight:800;font-size:21px;line-height:1.3;text-decoration:none;letter-spacing:0.2px;}" +
       "#cbank-chat-footer a:hover{text-decoration:underline;}" +
       "@media (max-width:420px){#cbank-chat-window{right:-12px;}}";
 

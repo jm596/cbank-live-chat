@@ -222,7 +222,7 @@ const ESCALATION_DELAY_MS = 2 * 60 * 1000;
 const OWNER_WHATSAPP = "59897982374";
 const unansweredTimers = new Map(); // sessionId -> Timeout
 
-const INFO_LINK_LINE = "+INFO :: linktr.ee/cbank.ws";
+const INFO_LINK_LINE = "Toda la Info >>> https://linktr.ee/cbank.ws";
 
 const ESCALATION_COPY = {
   es: {
@@ -297,8 +297,10 @@ function scheduleEscalation(session, triggerText) {
       });
     }
 
+    // NOTE: the owner is already alerted the moment the query first arrived
+    // (see forwardQueryToOwnerWhatsApp calls at the logUnansweredQuestion
+    // call sites) — no second forward here, to avoid double-notifying.
     broadcastSessionList();
-    forwardQueryToOwnerWhatsApp(current, triggerText);
   }, ESCALATION_DELAY_MS);
   unansweredTimers.set(session.id, timer);
 }
@@ -730,6 +732,7 @@ try {
   session.unread = (session.unread || 0) + 1;
     session.needsReply = true;
     logUnansweredQuestion(session, trimmed);
+    forwardQueryToOwnerWhatsApp(session, trimmed);
     scheduleEscalation(session, trimmed);
   }
 } catch (err) {
@@ -865,6 +868,7 @@ io.on("connection", (socket) => {
         session.unread = (session.unread || 0) + 1;
         session.needsReply = true;
         logUnansweredQuestion(session, message.text);
+        forwardQueryToOwnerWhatsApp(session, message.text);
         scheduleEscalation(session, message.text);
 
                 io.to(`session-${sessionId}`).emit("message:new", message);
