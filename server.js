@@ -712,21 +712,20 @@ try {
 broadcastSessionList();
 }
 
-// ---- Instagram Messaging (via the Facebook Graph API "Send API", the same
-// infra Messenger uses — works once the @cbankcard Instagram professional
-// account is linked to a Facebook Page and the Page is subscribed to the
-// "instagram" webhook object) --------------------------------------------
+// ---- Instagram Messaging (via the "Instagram API with Instagram Login" —
+// a Page-less flow that authenticates directly against the @cbankcard
+// Instagram professional account, no linked Facebook Page required) -------
 const INSTAGRAM_API_VERSION = process.env.INSTAGRAM_API_VERSION || "v22.0";
 
 function instagramConfigured() {
-  return Boolean(process.env.INSTAGRAM_PAGE_ACCESS_TOKEN);
+  return Boolean(process.env.INSTAGRAM_ACCESS_TOKEN);
 }
 
 function sendInstagramMessage(igsid, text) {
   return new Promise((resolve, reject) => {
     if (!instagramConfigured()) {
       console.warn(
-        "[cbank] Instagram not configured (INSTAGRAM_PAGE_ACCESS_TOKEN) — message not sent. See .env.example."
+        "[cbank] Instagram not configured (INSTAGRAM_ACCESS_TOKEN) — message not sent. See .env.example."
       );
       return resolve();
     }
@@ -736,9 +735,9 @@ function sendInstagramMessage(igsid, text) {
     });
     const req = https.request(
       {
-        hostname: "graph.facebook.com",
+        hostname: "graph.instagram.com",
         path: `/${INSTAGRAM_API_VERSION}/me/messages?access_token=${encodeURIComponent(
-          process.env.INSTAGRAM_PAGE_ACCESS_TOKEN
+          process.env.INSTAGRAM_ACCESS_TOKEN
         )}`,
         method: "POST",
         headers: {
@@ -773,8 +772,8 @@ function fetchInstagramProfile(igsid) {
     if (!instagramConfigured()) return resolve(null);
     https
       .get(
-        `https://graph.facebook.com/${INSTAGRAM_API_VERSION}/${igsid}?fields=name,username&access_token=${encodeURIComponent(
-          process.env.INSTAGRAM_PAGE_ACCESS_TOKEN
+        `https://graph.instagram.com/${INSTAGRAM_API_VERSION}/${igsid}?fields=name,username&access_token=${encodeURIComponent(
+          process.env.INSTAGRAM_ACCESS_TOKEN
         )}`,
         (res) => {
           let data = "";
@@ -1270,7 +1269,7 @@ server.listen(PORT, () => {
               }
               if (!instagramConfigured()) {
                 console.warn(
-                  "[cbank] Instagram not configured (INSTAGRAM_PAGE_ACCESS_TOKEN) — incoming DMs will be logged but replies won't be sent. See .env.example."
+                  "[cbank] Instagram not configured (INSTAGRAM_ACCESS_TOKEN) — incoming DMs will be logged but replies won't be sent. See .env.example."
                   );
               }
 });
