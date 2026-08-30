@@ -1005,6 +1005,7 @@ app.get("/webhooks/instagram", (req, res) => {
 // immediately and process after — same pattern as the WhatsApp webhook.
 app.post("/webhooks/instagram", (req, res) => {
   res.sendStatus(200);
+  console.log("[cbank] Instagram webhook payload:", JSON.stringify(req.body));
 
   try {
     const entries = req.body.entry || [];
