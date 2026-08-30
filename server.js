@@ -112,32 +112,6 @@ let faqs = [
   {
     id: uuidv4(),
     question: {
-      es: "¿Qué hago si falla mi verificación KYC?",
-      en: "What should I do if my KYC verification fails?",
-      pt: "O que faço se minha verificação KYC falhar?",
-    },
-    answer: {
-      es: "• Revisa si hay errores: asegúrate de que los documentos enviados sean claros y válidos\n• Vuelve a tomarte la selfie con buena iluminación y sin obstrucciones\n• Contacta a soporte si crees que fue un error",
-      en: "• Check for errors — make sure your submitted documents are clear and valid\n• Retake your selfie with good lighting and no obstructions\n• Contact support if you believe it's a mistake",
-      pt: "• Verifique se há erros: garanta que os documentos enviados estejam nítidos e válidos\n• Tire a selfie novamente com boa iluminação e sem obstruções\n• Entre em contato com o suporte se acredita que houve um engano",
-    },
-  },
-  {
-    id: uuidv4(),
-    question: {
-      es: "¿Qué países son compatibles?",
-      en: "What countries are supported?",
-      pt: "Quais países são compatíveis?",
-    },
-    answer: {
-      es: "CBank Card está disponible actualmente en muchos estados de EE. UU., América Latina y el Caribe. No son elegibles residentes o ciudadanos de: Cuba, Venezuela, Nicaragua, Rusia, Corea del Norte, Siria, Irán, y las regiones de Crimea, Lugansk y Donetsk. Están trabajando activamente para expandirse a más países.",
-      en: "CBank Card is currently available in many U.S. states, Latin America, and the Caribbean. Residents/citizens of the following are not eligible: Cuba, Venezuela, Nicaragua, Russia, North Korea, Syria, Iran, and the regions of Crimea, Luhansk, and Donetsk. We're actively working on expanding to more countries.",
-      pt: "O CBank Card está atualmente disponível em muitos estados dos EUA, na América Latina e no Caribe. Residentes ou cidadãos dos seguintes locais não são elegíveis: Cuba, Venezuela, Nicarágua, Rússia, Coreia do Norte, Síria, Irã, e as regiões da Crimeia, Lugansk e Donetsk. Estamos trabalhando ativamente para expandir para mais países.",
-    },
-  },
-  {
-    id: uuidv4(),
-    question: {
       es: "¿Dónde puedo usar mi CBank Card?",
       en: "Where can I use my CBank Card?",
       pt: "Onde posso usar meu CBank Card?",
@@ -164,19 +138,6 @@ let faqs = [
   {
     id: uuidv4(),
     question: {
-      es: "¿Cómo contacto a soporte?",
-      en: "How do I contact support?",
-      pt: "Como entro em contato com o suporte?",
-    },
-    answer: {
-      es: "Puedes escribirnos en cualquier momento a support@cbank.ws, o seguir chateando aquí mismo — un agente se sumará a esta conversación.",
-      en: "You can reach us anytime at support@cbank.ws, or just keep chatting here — an agent will join this conversation.",
-      pt: "Você pode nos contatar a qualquer momento em support@cbank.ws, ou continuar conversando aqui mesmo — um agente vai entrar nesta conversa.",
-    },
-  },
-  {
-    id: uuidv4(),
-    question: {
       es: "¿Dónde descargo la app?",
       en: "Where can I download the app?",
       pt: "Onde eu baixo o aplicativo?",
@@ -185,6 +146,32 @@ let faqs = [
       es: "Links Descarga:\nGOOGLE PLAY :: https://play.google.com/store/apps/details?id=com.cbank.cbankapp\nAPPLE STORE :: https://apps.apple.com/uy/app/cbank-card/id6757606839",
       en: "Download links:\nGOOGLE PLAY :: https://play.google.com/store/apps/details?id=com.cbank.cbankapp\nAPPLE STORE :: https://apps.apple.com/uy/app/cbank-card/id6757606839",
       pt: "Links de download:\nGOOGLE PLAY :: https://play.google.com/store/apps/details?id=com.cbank.cbankapp\nAPPLE STORE :: https://apps.apple.com/uy/app/cbank-card/id6757606839",
+    },
+  },
+  {
+    id: uuidv4(),
+    question: {
+      es: "Cuentas Bancarias",
+      en: "Bank Accounts",
+      pt: "Contas Bancárias",
+    },
+    answer: {
+      es: "Puedes crearte Cuentas Bancarias que funcionan como Rampas de FIAT en cada País. Las mismas sirven para Enviar y Recibir dinero en Moneda local del País de la cuenta. Ese $ se transforma a USDT y se acredita inmediatamente en tu Saldo de Tarjeta. Los Bancos tienen Costo de 1%. El tipo de Cambio utilizado en la punta Compradora del día.",
+      en: "You can create Bank Accounts that work as FIAT ramps in each country. They let you send and receive money in the local currency of the account's country. That money is converted to USDT and credited immediately to your Card balance. Banks charge a 1% fee. The exchange rate used is the day's buy rate.",
+      pt: "Você pode criar Contas Bancárias que funcionam como rampas de FIAT em cada país. Elas servem para enviar e receber dinheiro na moeda local do país da conta. Esse valor é convertido em USDT e creditado imediatamente no saldo do seu cartão. Os bancos cobram uma taxa de 1%. A taxa de câmbio utilizada é a cotação de compra do dia.",
+    },
+  },
+  {
+    id: uuidv4(),
+    question: {
+      es: "Rendimientos",
+      en: "Yield",
+      pt: "Rendimentos",
+    },
+    answer: {
+      es: "Puedes invertir tu saldo de cuenta en un fondo que rinde 3% anual, se computa la ganancia diariamente pero se acredita todo junto cuando retiras la inversión. Muy pronto activamos rendimientos sobre el balance de Tarjeta, sin necesidad de colocar o congelar esos fondos.",
+      en: "You can invest your account balance in a fund that yields 3% annually — earnings are calculated daily but credited all at once when you withdraw the investment. Very soon we'll activate yield on your Card balance, with no need to lock up or freeze those funds.",
+      pt: "Você pode investir o saldo da sua conta em um fundo que rende 3% ao ano — o ganho é calculado diariamente, mas é creditado de uma vez quando você resgata o investimento. Em breve ativaremos rendimento sobre o saldo do cartão, sem necessidade de bloquear ou congelar esses fundos.",
     },
   },
   ];
@@ -632,21 +619,23 @@ function faqText(map, locale) {
 // WhatsApp text messages can't render the widget's clickable FAQ buttons, so
 // replying with a question's number stands in for a click. Reuses the exact
 // same `faqs` list agents manage from the dashboard.
+const FAQS_INFO_LINK_LINE = "*Toda la Info Aca >> https://faqs.cbank.ws*";
+
 const WHATSAPP_MENU_COPY = {
   es: {
     greeting:
       "¡Hola! Soy el asistente virtual de cbank. Elegí una pregunta escribiendo su número, o escribí tu consulta y un agente te va a responder.",
-    menuFooter: "\n\nEscribí *menu* en cualquier momento para volver a ver esta lista.",
+    menuFooter: `\n\nEscribí *menu* en cualquier momento para volver a ver esta lista.\n\n${FAQS_INFO_LINK_LINE}`,
   },
   en: {
     greeting:
       "Hi! I'm cbank's virtual assistant. Pick a question by typing its number, or type your own question and an agent will reply.",
-    menuFooter: "\n\nType *menu* anytime to see this list again.",
+    menuFooter: `\n\nType *menu* anytime to see this list again.\n\n${FAQS_INFO_LINK_LINE}`,
   },
   pt: {
     greeting:
       "Olá! Sou o assistente virtual do cbank. Escolha uma pergunta digitando o número dela, ou escreva sua dúvida que um agente vai responder.",
-    menuFooter: "\n\nDigite *menu* a qualquer momento para ver esta lista novamente.",
+    menuFooter: `\n\nDigite *menu* a qualquer momento para ver esta lista novamente.\n\n${FAQS_INFO_LINK_LINE}`,
   },
 };
 
