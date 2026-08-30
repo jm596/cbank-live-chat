@@ -60,14 +60,14 @@ let faqs = [
   {
     id: uuidv4(),
     question: {
-      es: "¿Qué es la CBank Card y cómo funciona?",
-      en: "What is the CBank Card and how does it work?",
-      pt: "O que é o CBank Card e como funciona?",
+      es: "¿Qué es la CBank Card y dónde puedo usarla?",
+      en: "What is the CBank Card and where can I use it?",
+      pt: "O que é o CBank Card e onde posso usá-lo?",
     },
     answer: {
-      es: "La CBank Card es una tarjeta Visa respaldada por cripto que te permite gastar tus USDC y USDT en cualquier lugar donde se acepte Visa. Al hacer una compra, el comercio recibe el pago como con una tarjeta tradicional.\n\nFunciones clave:\n• Admite USDC y USDT como respaldo\n• CBank Card no cobra comisiones de gas ni de conversión (aún podrías pagar comisiones de red directamente)\n• Funciona donde se acepte Visa, en línea y en tiendas físicas\n• No requiere verificación de crédito",
-      en: "CBank Card is a crypto-backed Visa card that lets you spend your USDC and USDT anywhere Visa is accepted. When you make a purchase, the merchant gets paid just like with a traditional card.\n\nKey features:\n• Supports USDC and USDT for collateral\n• No gas or conversion fees are charged by CBank Card (you may still pay network gas fees directly)\n• Works anywhere Visa is accepted, online and in-store\n• No credit check required",
-      pt: "O CBank Card é um cartão Visa lastreado em cripto que permite gastar seus USDC e USDT em qualquer lugar que aceite Visa. Ao fazer uma compra, o comerciante recebe o pagamento como em um cartão tradicional.\n\nPrincipais recursos:\n• Aceita USDC e USDT como garantia\n• O CBank Card não cobra taxas de gas nem de conversão (você ainda pode pagar taxas de gas da rede diretamente)\n• Funciona em qualquer lugar que aceite Visa, online e em lojas físicas\n• Não exige verificação de crédito",
+      es: "Es una tarjeta Visa respaldada por USDC/USDT. La usás en cualquier lugar donde se acepte Visa, online y en tiendas físicas, en todo el mundo. No requiere verificación de crédito.",
+      en: "It's a Visa card backed by USDC/USDT. You can use it anywhere Visa is accepted, online and in-store, worldwide. No credit check required.",
+      pt: "É um cartão Visa lastreado em USDC/USDT. Você o usa em qualquer lugar que aceite Visa, online e em lojas físicas, no mundo todo. Não exige verificação de crédito.",
     },
   },
   {
@@ -86,40 +86,14 @@ let faqs = [
   {
     id: uuidv4(),
     question: {
-      es: "¿Cómo verifico mi identidad?",
-      en: "How do I verify my identity?",
-      pt: "Como verifico minha identidade?",
+      es: "¿Cómo verifico mi identidad y cuánto tarda?",
+      en: "How do I verify my identity and how long does it take?",
+      pt: "Como verifico minha identidade e quanto tempo leva?",
     },
     answer: {
-      es: "Para usar tu CBank Card debes completar la verificación KYC. Después de iniciar sesión se te pedirá:\n• Nombre legal completo\n• Correo electrónico\n• Fecha de nacimiento\n• Número de SSN/identificación nacional\n• Una identificación oficial vigente (pasaporte, licencia de conducir o cédula/DNI)\n• Una selfie para confirmar tu identidad\n\nUna vez enviada, tu verificación será revisada; si es aprobada, podrás usar tu CBank Card de inmediato.",
-      en: "To use your CBank Card you must complete KYC verification. After logging in you'll be asked for:\n• Full legal name\n• Email\n• Date of birth\n• SSN/national ID number\n• A valid government-issued ID (passport, driver's license, or national ID)\n• A selfie to confirm your identity\n\nOnce submitted, your verification will be reviewed — if approved, you can start using your CBank Card right away.",
-      pt: "Para usar seu CBank Card, você deve concluir a verificação KYC. Depois de fazer login, será solicitado:\n• Nome legal completo\n• E-mail\n• Data de nascimento\n• Número de SSN/identificação nacional\n• Um documento de identidade oficial válido (passaporte, carteira de motorista ou identidade nacional)\n• Uma selfie para confirmar sua identidade\n\nApós o envio, sua verificação será analisada — se aprovada, você já pode começar a usar seu CBank Card.",
-    },
-  },
-  {
-    id: uuidv4(),
-    question: {
-      es: "¿Cuánto tarda el proceso de verificación KYC?",
-      en: "How long does the KYC verification process take?",
-      pt: "Quanto tempo leva o processo de verificação KYC?",
-    },
-    answer: {
-      es: "La verificación KYC normalmente toma solo unos segundos. En algunos casos puede tardar hasta 72 horas si se necesita verificación adicional. Si se retrasa más de 72 horas, por favor contacta a soporte.",
-      en: "KYC verification typically takes just a few seconds. In some cases it may take up to 72 hours if additional verification is needed. If it's delayed more than 72 hours, please contact support.",
-      pt: "A verificação KYC geralmente leva apenas alguns segundos. Em alguns casos, pode levar até 72 horas se for necessária verificação adicional. Se demorar mais de 72 horas, entre em contato com o suporte.",
-    },
-  },
-  {
-    id: uuidv4(),
-    question: {
-      es: "¿Dónde puedo usar mi CBank Card?",
-      en: "Where can I use my CBank Card?",
-      pt: "Onde posso usar meu CBank Card?",
-    },
-    answer: {
-      es: "En cualquier lugar donde se acepte Visa, tanto en línea como en persona, para tus compras diarias en todo el mundo.",
-      en: "Anywhere Visa is accepted — both online and in person, for everyday purchases worldwide.",
-      pt: "Em qualquer lugar que aceite Visa, tanto online quanto presencialmente, para suas compras do dia a dia em todo o mundo.",
+      es: "Completá el KYC en la app: nombre, documento y una selfie. La verificación es inmediata. Si se demora más de 5 minutos, contactá a soporte.",
+      en: "Complete KYC in the app: name, ID, and a selfie. Verification is immediate. If it takes more than 5 minutes, contact support.",
+      pt: "Complete o KYC no aplicativo: nome, documento e uma selfie. A verificação é imediata. Se demorar mais de 5 minutos, entre em contato com o suporte.",
     },
   },
   {
