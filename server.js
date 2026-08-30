@@ -990,6 +990,37 @@ app.post("/webhooks/whatsapp", (req, res) => {
 // ---- Instagram webhook endpoints ----------------------------------------
 // GET: Meta's one-time verification handshake when you register the webhook
 // URL for the Page (Meta for Developers → your App → Webhooks → Instagram).
+// Small status endpoint so the dashboard (and the Meta App Review screencast)
+// can show which Instagram professional account is connected — calls our
+// own /me on graph.instagram.com with the long-lived token.
+app.get("/api/instagram/status", (req, res) => {
+  if (!instagramConfigured()) {
+    return res.json({ connected: false });
+  }
+  https
+    .get(
+      `https://graph.instagram.com/${INSTAGRAM_API_VERSION}/me?fields=id,username,name,profile_picture_url&access_token=${encodeURIComponent(
+        process.env.INSTAGRAM_ACCESS_TOKEN
+      )}`,
+      (apiRes) => {
+        let data = "";
+        apiRes.on("data", (chunk) => (data += chunk));
+        apiRes.on("end", () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) {
+              return res.json({ connected: false, error: parsed.error.message });
+            }
+            res.json({ connected: true, ...parsed });
+          } catch (e) {
+            res.json({ connected: false });
+          }
+        });
+      }
+    )
+    .on("error", () => res.json({ connected: false }));
+});
+
 app.get("/webhooks/instagram", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];

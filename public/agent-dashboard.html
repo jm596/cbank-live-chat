@@ -142,6 +142,10 @@
      <div class="subtitle">Agent dashboard</div>
      <button id="manage-faqs-btn" type="button">❓ Gestionar preguntas frecuentes</button>
      <button id="unanswered-btn" type="button">🧠 Preguntas sin responder</button>
+     <div id="instagram-status" style="display:none; align-items:center; gap:8px; margin-top:10px; padding:8px 10px; background:#fce8f3; border-radius:8px; font-size:13px;">
+      <img id="instagram-status-pic" src="" alt="" style="width:24px; height:24px; border-radius:50%; display:none;" />
+      <span id="instagram-status-text" style="color:#c4267b; font-weight:600;"></span>
+     </div>
     </header>
     <div id="filter-tabs">
      <div class="filter-tab active" data-filter="all">Todas</div>
@@ -192,6 +196,24 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
    const socket = io();
+
+   // Show which Instagram professional account is connected, if any —
+   // also doubles as a quick sanity check that the token is still valid.
+   fetch("/api/instagram/status")
+     .then((r) => r.json())
+     .then((data) => {
+       if (!data.connected) return;
+       const box = document.getElementById("instagram-status");
+       const pic = document.getElementById("instagram-status-pic");
+       const text = document.getElementById("instagram-status-text");
+       text.textContent = `Instagram conectado: @${data.username || data.name || data.id}`;
+       if (data.profile_picture_url) {
+         pic.src = data.profile_picture_url;
+         pic.style.display = "inline-block";
+       }
+       box.style.display = "flex";
+     })
+     .catch(() => {});
    let sessions = [];
    let activeSessionId = null;
    let filter = "all"; // all | open | closed
