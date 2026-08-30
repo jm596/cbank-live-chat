@@ -50,6 +50,8 @@ const sessions = new Map();
 // a returning number resumes the same conversation instead of starting a new
 // one every time (mirrors what localStorage does for the web widget).
 const whatsappSessions = new Map();
+// Same idea for Instagram DMs, keyed by IGSID (Instagram-scoped sender id).
+const instagramSessions = new Map();
 
 // ---- FAQ bot store (seeded from the real cbank.ws / cbank.ws/support FAQ
 // content, translated to es/en/pt) --------------------------------------
@@ -209,7 +211,8 @@ function clearEscalationTimer(sessionId) {
 }
 
 function forwardQueryToOwnerWhatsApp(session, text) {
-  const channelLabel = session.channel === "whatsapp" ? "WhatsApp" : "Web";
+  const channelLabel =
+    session.channel === "whatsapp" ? "WhatsApp" : session.channel === "instagram" ? "Instagram" : "Web";
   // Uses an approved template (not free-form text) because the owner's
   // number likely hasn't messaged the business number in the last 24h,
   // which would otherwise fail with Meta error 131047.
@@ -232,7 +235,7 @@ function scheduleEscalation(session, triggerText) {
 
     const copy = ESCALATION_COPY[current.locale] || ESCALATION_COPY.es;
     let botText = copy.waiting;
-    if (current.channel === "whatsapp") {
+    if (current.channel === "whatsapp" || current.channel === "instagram") {
       const faqList = buildFaqListText(current.locale);
       if (faqList) botText += "\n\n" + faqList;
     }
@@ -247,7 +250,7 @@ function scheduleEscalation(session, triggerText) {
       from: "bot",
       text: botText,
       at: new Date().toISOString(),
-      showFaq: current.channel !== "whatsapp",
+      showFaq: current.channel !== "whatsapp" && current.channel !== "instagram",
     };
     current.messages.push(message);
     io.to(`session-${current.id}`).emit("message:new", message);
@@ -255,6 +258,10 @@ function scheduleEscalation(session, triggerText) {
     if (current.channel === "whatsapp") {
       sendWhatsAppMessage(current.whatsapp, botText).catch((err) => {
         console.error("[cbank] Failed to deliver escalation message over WhatsApp:", err.message);
+      });
+    } else if (current.channel === "instagram") {
+      sendInstagramMessage(current.instagramId, botText).catch((err) => {
+        console.error("[cbank] Failed to deliver escalation message over Instagram:", err.message);
       });
     }
 
@@ -705,6 +712,230 @@ try {
 broadcastSessionList();
 }
 
+// ---- Instagram Messaging (via the Facebook Graph API "Send API", the same
+// infra Messenger uses — works once the @cbankcard Instagram professional
+// account is linked to a Facebook Page and the Page is subscribed to the
+// "instagram" webhook object) --------------------------------------------
+const INSTAGRAM_API_VERSION = process.env.INSTAGRAM_API_VERSION || "v22.0";
+
+function instagramConfigured() {
+  return Boolean(process.env.INSTAGRAM_PAGE_ACCESS_TOKEN);
+}
+
+function sendInstagramMessage(igsid, text) {
+  return new Promise((resolve, reject) => {
+    if (!instagramConfigured()) {
+      console.warn(
+        "[cbank] Instagram not configured (INSTAGRAM_PAGE_ACCESS_TOKEN) — message not sent. See .env.example."
+      );
+      return resolve();
+    }
+    const payload = JSON.stringify({
+      recipient: { id: igsid },
+      message: { text },
+    });
+    const req = https.request(
+      {
+        hostname: "graph.facebook.com",
+        path: `/${INSTAGRAM_API_VERSION}/me/messages?access_token=${encodeURIComponent(
+          process.env.INSTAGRAM_PAGE_ACCESS_TOKEN
+        )}`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(data ? JSON.parse(data) : {});
+          } else {
+            console.error(`[cbank] Instagram send failed (${res.statusCode}):`, data);
+            reject(new Error(`Instagram API error ${res.statusCode}: ${data}`));
+          }
+        });
+      }
+    );
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+// Best-effort lookup of the sender's Instagram username, so the dashboard
+// shows a real handle instead of a raw IGSID. The messaging webhook itself
+// doesn't include a profile, unlike WhatsApp's contact payload.
+function fetchInstagramProfile(igsid) {
+  return new Promise((resolve) => {
+    if (!instagramConfigured()) return resolve(null);
+    https
+      .get(
+        `https://graph.facebook.com/${INSTAGRAM_API_VERSION}/${igsid}?fields=name,username&access_token=${encodeURIComponent(
+          process.env.INSTAGRAM_PAGE_ACCESS_TOKEN
+        )}`,
+        (res) => {
+          let data = "";
+          res.on("data", (chunk) => (data += chunk));
+          res.on("end", () => {
+            try {
+              const parsed = JSON.parse(data);
+              resolve(parsed.username || parsed.name || null);
+            } catch (e) {
+              resolve(null);
+            }
+          });
+        }
+      )
+      .on("error", () => resolve(null));
+  });
+}
+
+// Instagram DMs render no text styling at all (asterisks show up literally),
+// so this channel gets its own plain-text copy instead of reusing WhatsApp's
+// bold markdown.
+const FAQS_INFO_LINK_LINE_PLAIN = "Toda la Info Aca >> https://faqs.cbank.ws";
+
+// Marketing-style greeting sent once, the first time a customer DMs
+// @cbankcard — the FAQ menu (buildInstagramMenuText) follows right after as
+// a second message so they can still pick a numbered question.
+const INSTAGRAM_WELCOME_COPY = {
+  es:
+    "Cbank es una Tarjeta Visa Platinum que se recarga con USDT/USDC, usando Cuentas Bancarias en varios países de Latam, USA y Europa como \"rampa\" de Fiat a Crypto.\n\n" +
+    "$0 Emisión de Tarjeta\n0% Comisión por Depósito\n$0 Mantenimiento Mensual\n\n" +
+    "Podés crearte Cuentas Bancarias en minutos desde tu celular para enviar y recibir pagos en estos países: USA, UK, Europa, Argentina, Colombia, Brasil y México, en moneda local.\n\n" +
+    "Tu Tarjeta VISA USDT es tu billetera.\n\n" +
+    "Toda la info: https://linktr.ee/cbank.ws",
+  en:
+    "Cbank is a Visa Platinum Card you top up with USDT/USDC, using bank accounts in several countries across Latam, the US and Europe as a Fiat-to-Crypto \"ramp\".\n\n" +
+    "$0 card issuance\n0% deposit fee\n$0 monthly maintenance\n\n" +
+    "You can open bank accounts in minutes from your phone to send and receive payments in these countries: USA, UK, Europe, Argentina, Colombia, Brazil and Mexico, in local currency.\n\n" +
+    "Your VISA USDT Card is your wallet.\n\n" +
+    "Full info: https://linktr.ee/cbank.ws",
+  pt:
+    "O Cbank é um Cartão Visa Platinum recarregado com USDT/USDC, usando Contas Bancárias em vários países da América Latina, EUA e Europa como \"rampa\" de Fiat para Cripto.\n\n" +
+    "$0 emissão do cartão\n0% taxa de depósito\n$0 manutenção mensal\n\n" +
+    "Você pode abrir Contas Bancárias em minutos pelo celular para enviar e receber pagamentos nestes países: EUA, Reino Unido, Europa, Argentina, Colômbia, Brasil e México, em moeda local.\n\n" +
+    "Seu Cartão VISA USDT é sua carteira.\n\n" +
+    "Toda a info: https://linktr.ee/cbank.ws",
+};
+
+function buildInstagramWelcomeText(locale) {
+  return INSTAGRAM_WELCOME_COPY[locale] || INSTAGRAM_WELCOME_COPY.es;
+}
+
+const INSTAGRAM_MENU_COPY = {
+  es: {
+    greeting: "Elegí una pregunta escribiendo su número, o escribí tu consulta y un agente te va a responder.",
+    menuFooter: `\n\nEscribí menu en cualquier momento para volver a ver esta lista.\n\n${FAQS_INFO_LINK_LINE_PLAIN}`,
+  },
+  en: {
+    greeting: "Pick a question by typing its number, or type your own question and an agent will reply.",
+    menuFooter: `\n\nType menu anytime to see this list again.\n\n${FAQS_INFO_LINK_LINE_PLAIN}`,
+  },
+  pt: {
+    greeting: "Escolha uma pergunta digitando o número dela, ou escreva sua dúvida que um agente vai responder.",
+    menuFooter: `\n\nDigite menu a qualquer momento para ver esta lista novamente.\n\n${FAQS_INFO_LINK_LINE_PLAIN}`,
+  },
+};
+
+function buildInstagramMenuText(locale) {
+  const copy = INSTAGRAM_MENU_COPY[locale] || INSTAGRAM_MENU_COPY.es;
+  const lines = faqs.map((f, i) => `${i + 1}. ${faqText(f.question, locale)}`);
+  return `${copy.greeting}\n\n${lines.join("\n")}${copy.menuFooter}`;
+}
+
+function findInstagramSession(igsid) {
+  const existingId = instagramSessions.get(igsid);
+  return existingId ? sessions.get(existingId) : null;
+}
+
+function createInstagramSession(igsid, profileName) {
+  const id = uuidv4();
+  const session = {
+    id,
+    name: profileName || `Instagram ${igsid}`,
+    email: "",
+    whatsapp: "",
+    instagramId: igsid,
+    device: "Instagram",
+    locale: "es",
+    channel: "instagram",
+    location: { ip: "n/a", country: "Instagram", city: "Instagram" },
+    status: "open",
+    createdAt: new Date().toISOString(),
+    closedAt: null,
+    messages: [],
+    unread: 0,
+    needsReply: false,
+    transcriptEmail: null,
+  };
+  sessions.set(id, session);
+  instagramSessions.set(igsid, id);
+  return session;
+}
+
+function pushInstagramMessage(session, from, text) {
+  const message = { id: uuidv4(), from, text, at: new Date().toISOString() };
+  session.messages.push(message);
+  io.to(`session-${session.id}`).emit("message:new", message);
+  return message;
+}
+
+// Handles one inbound Instagram DM end to end — same split as WhatsApp: the
+// very first message from a new contact gets the marketing welcome text plus
+// the FAQ menu, "menu"/a numbered reply gets an instant bot answer, and
+// anything else is left unread for a human agent (with an immediate owner
+// WhatsApp alert + the 2-minute escalation, exactly like every other channel).
+async function handleIncomingInstagramText(igsid, text, profileName) {
+  let session = findInstagramSession(igsid);
+  const isNewSession = !session;
+  if (!session) {
+    if (!profileName) profileName = await fetchInstagramProfile(igsid);
+    session = createInstagramSession(igsid, profileName);
+  }
+
+  pushInstagramMessage(session, "client", text);
+
+  const trimmed = text.trim();
+  const isMenuCommand = /^(menu|menú|hi|hola|oi|start)$/i.test(trimmed);
+  const asNumber = Number(trimmed);
+  const faqIndex = Number.isInteger(asNumber) ? asNumber - 1 : -1;
+  const matchedFaq = faqIndex >= 0 && faqIndex < faqs.length ? faqs[faqIndex] : null;
+
+  try {
+    if (isNewSession) {
+      const welcomeText = buildInstagramWelcomeText(session.locale);
+      pushInstagramMessage(session, "bot", welcomeText);
+      await sendInstagramMessage(igsid, welcomeText);
+
+      const menuText = buildInstagramMenuText(session.locale);
+      pushInstagramMessage(session, "bot", menuText);
+      await sendInstagramMessage(igsid, menuText);
+    } else if (isMenuCommand) {
+      const menuText = buildInstagramMenuText(session.locale);
+      pushInstagramMessage(session, "bot", menuText);
+      await sendInstagramMessage(igsid, menuText);
+    } else if (matchedFaq) {
+      const answer = faqText(matchedFaq.answer, session.locale);
+      pushInstagramMessage(session, "bot", answer);
+      await sendInstagramMessage(igsid, answer);
+    } else {
+      session.unread = (session.unread || 0) + 1;
+      session.needsReply = true;
+      logUnansweredQuestion(session, trimmed);
+      forwardQueryToOwnerWhatsApp(session, trimmed);
+      scheduleEscalation(session, trimmed);
+    }
+  } catch (err) {
+    console.error("[cbank] Failed to send Instagram reply:", err.message);
+  }
+
+  broadcastSessionList();
+}
+
 // ---- WhatsApp webhook endpoints -----------------------------------------
 // GET: Meta's one-time verification handshake when you register the webhook
 // URL in the app dashboard (Meta for Developers → WhatsApp → Configuration).
@@ -755,6 +986,43 @@ app.post("/webhooks/whatsapp", (req, res) => {
          } catch (err) {
            console.error("[cbank] Error handling WhatsApp webhook payload:", err);
          }
+});
+
+// ---- Instagram webhook endpoints ----------------------------------------
+// GET: Meta's one-time verification handshake when you register the webhook
+// URL for the Page (Meta for Developers → your App → Webhooks → Instagram).
+app.get("/webhooks/instagram", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe" && token && token === process.env.INSTAGRAM_VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+  return res.sendStatus(403);
+});
+
+// POST: incoming Instagram DMs. Meta expects a fast 200 OK, so we ack
+// immediately and process after — same pattern as the WhatsApp webhook.
+app.post("/webhooks/instagram", (req, res) => {
+  res.sendStatus(200);
+
+  try {
+    const entries = req.body.entry || [];
+    entries.forEach((entry) => {
+      const messagingEvents = entry.messaging || [];
+      messagingEvents.forEach((event) => {
+        // Ignore echoes of our own outbound messages and anything without text
+        // (attachments, reactions, read receipts, etc. — out of scope here).
+        if (!event.message || event.message.is_echo || !event.message.text) return;
+        const igsid = event.sender && event.sender.id;
+        if (!igsid) return;
+        handleIncomingInstagramText(igsid, event.message.text);
+      });
+    });
+  } catch (err) {
+    console.error("[cbank] Error handling Instagram webhook payload:", err);
+  }
 });
 
 io.on("connection", (socket) => {
@@ -903,6 +1171,10 @@ io.on("connection", (socket) => {
                   sendWhatsAppMessage(session.whatsapp, message.text).catch((err) => {
                     console.error("[cbank] Failed to deliver agent reply over WhatsApp:", err.message);
                   });
+                } else if (session.channel === "instagram") {
+                  sendInstagramMessage(session.instagramId, message.text).catch((err) => {
+                    console.error("[cbank] Failed to deliver agent reply over Instagram:", err.message);
+                  });
                 }
       });
 
@@ -989,10 +1261,16 @@ server.listen(PORT, () => {
   console.log(`  Widget demo: http://localhost:${PORT}/widget-demo.html`);
   console.log(`  Agent dashboard: http://localhost:${PORT}/agent-dashboard.html`);
   console.log(`  WhatsApp webhook: http://localhost:${PORT}/webhooks/whatsapp`);
+  console.log(`  Instagram webhook: http://localhost:${PORT}/webhooks/instagram`);
   getMailer(); // logs a warning immediately if SMTP isn't configured, instead of only on first close
               if (!whatsappConfigured()) {
                 console.warn(
                   "[cbank] WhatsApp not configured (WHATSAPP_PHONE_NUMBER_ID/WHATSAPP_ACCESS_TOKEN) — incoming messages will be logged but replies won't be sent. See .env.example."
+                  );
+              }
+              if (!instagramConfigured()) {
+                console.warn(
+                  "[cbank] Instagram not configured (INSTAGRAM_PAGE_ACCESS_TOKEN) — incoming DMs will be logged but replies won't be sent. See .env.example."
                   );
               }
 });

@@ -36,6 +36,7 @@
   .session-item .status-closed { font-size: 11px; color: #b45; text-transform: uppercase; letter-spacing: 0.5px; }
   .channel-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 1px 6px; border-radius: 4px; margin-right: 6px; vertical-align: middle; }
   .channel-whatsapp { background: #e7f8ee; color: #1e8a5f; }
+  .channel-instagram { background: #fce8f3; color: #c4267b; }
   .unread-dot { background: #e0263a; color: #fff; font-size: 11px; font-weight: 700; min-width: 18px; height: 18px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; }
   #empty-list { padding: 24px 18px; font-size: 13px; color: #999; }
 
@@ -297,7 +298,7 @@
      const unreadBadge = s.unread > 0 ? `<span class="unread-dot">${s.unread > 9 ? "9+" : s.unread}</span>` : "";
      const closedTag = s.status === "closed" ? `<span class="status-closed">Closed</span>` : "";
      const location = s.location && s.location.country ? `${escapeHtml(s.location.city)}, ${escapeHtml(s.location.country)}` : "";
-     const channelTag = s.channel === "whatsapp" ? `<span class="channel-tag channel-whatsapp">WhatsApp</span>` : "";
+     const channelTag = s.channel === "whatsapp" ? `<span class="channel-tag channel-whatsapp">WhatsApp</span>` : s.channel === "instagram" ? `<span class="channel-tag channel-instagram">Instagram</span>` : "";
 
      item.innerHTML = `
      <div class="name"><span>${escapeHtml(s.name)}</span>${unreadBadge}</div>
@@ -362,7 +363,7 @@
 
     const deviceLine = session && session.device ? escapeHtml(session.device) : "";
 
-    const channelTag = session && session.channel === "whatsapp" ? `<span class="channel-tag channel-whatsapp">WhatsApp</span>` : "";
+    const channelTag = session && session.channel === "whatsapp" ? `<span class="channel-tag channel-whatsapp">WhatsApp</span>` : session && session.channel === "instagram" ? `<span class="channel-tag channel-instagram">Instagram</span>` : "";
 
     return `
     <div id="main-header">
@@ -635,7 +636,7 @@
     unanswered.forEach((uq) => {
      const card = document.createElement("div");
      card.className = "unanswered-card";
-     const channelLabel = uq.channel === "whatsapp" ? "WhatsApp" : "Web";
+     const channelLabel = uq.channel === "whatsapp" ? "WhatsApp" : uq.channel === "instagram" ? "Instagram" : "Web";
      card.innerHTML = `
      <div class="unanswered-text">${escapeHtml(uq.text)}</div>
      <div class="unanswered-meta">${escapeHtml(uq.sessionName || "")} · ${channelLabel} · ${new Date(uq.at).toLocaleString()}</div>
