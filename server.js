@@ -735,7 +735,7 @@ function sendInstagramMessage(igsid, text) {
     });
     const req = https.request(
       {
-        hostname: "graph.instagram.com",
+        hostname: "graph.facebook.com",
         path: `/${INSTAGRAM_API_VERSION}/me/messages?access_token=${encodeURIComponent(
           process.env.INSTAGRAM_ACCESS_TOKEN
         )}`,
@@ -772,7 +772,7 @@ function fetchInstagramProfile(igsid) {
     if (!instagramConfigured()) return resolve(null);
     https
       .get(
-        `https://graph.instagram.com/${INSTAGRAM_API_VERSION}/${igsid}?fields=name,username&access_token=${encodeURIComponent(
+        `https://graph.facebook.com/${INSTAGRAM_API_VERSION}/${igsid}?fields=name,username&access_token=${encodeURIComponent(
           process.env.INSTAGRAM_ACCESS_TOKEN
         )}`,
         (res) => {
@@ -992,14 +992,14 @@ app.post("/webhooks/whatsapp", (req, res) => {
 // URL for the Page (Meta for Developers → your App → Webhooks → Instagram).
 // Small status endpoint so the dashboard (and the Meta App Review screencast)
 // can show which Instagram professional account is connected — calls our
-// own /me on graph.instagram.com with the long-lived token.
+// own /me on graph.facebook.com with the long-lived token.
 app.get("/api/instagram/status", (req, res) => {
   if (!instagramConfigured()) {
     return res.json({ connected: false });
   }
   https
     .get(
-      `https://graph.instagram.com/${INSTAGRAM_API_VERSION}/me?fields=id,username,name,profile_picture_url&access_token=${encodeURIComponent(
+      `https://graph.facebook.com/${INSTAGRAM_API_VERSION}/me?fields=id,username,name,profile_picture_url&access_token=${encodeURIComponent(
         process.env.INSTAGRAM_ACCESS_TOKEN
       )}`,
       (apiRes) => {
