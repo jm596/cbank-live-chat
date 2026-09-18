@@ -152,6 +152,60 @@ let faqs = [
   },
   ];
 
+// ---- Welcome / greeting messages (agent-managed from the dashboard) ----
+// One editable text per channel, in es/en/pt. In-memory, like everything
+// else here -- resets on restart. Broadcast to every connected client and
+// agent via `welcome:list` (same pattern as `faqs`) so open widgets and the
+// dashboard itself stay in sync live.
+//  - web: shown once by the widget on a brand-new session. Supports a
+//    {name} placeholder, filled in client-side with the visitor's name.
+//  - whatsapp: the greeting prepended to the FAQ menu -- WhatsApp text
+//    messages can't render separate "bot" bubbles like the web widget does,
+//    so welcome + menu are one message, sent on first contact and again
+//    whenever the visitor types "menu".
+//  - instagram: the marketing-style text sent once, before the FAQ menu, on
+//    a brand-new Instagram DM thread.
+let welcomeMessages = {
+  web: {
+    es: "¡Hola {name}! Bienvenido al soporte de cbank. Soy el bot de cbank -- elija una pregunta abajo, o escriba su mensaje cuando quiera y un agente se sumará.",
+    en: "Hi {name}! Welcome to cbank support. I'm the cbank bot -- pick a question below, or type your own message any time and an agent will jump in.",
+    pt: "Olá {name}! Bem-vindo ao suporte cbank. Sou o bot da cbank -- escolha uma pergunta abaixo, ou digite sua mensagem quando quiser e um agente vai entrar.",
+  },
+  whatsapp: {
+    es: "¡Hola! Soy el asistente virtual de cbank. Elegí una pregunta escribiendo su número, o escribí tu consulta y un agente te va a responder.",
+    en: "Hi! I'm cbank's virtual assistant. Pick a question by typing its number, or type your own question and an agent will reply.",
+    pt: "Olá! Sou o assistente virtual do cbank. Escolha uma pergunta digitando o número dela, ou escreva sua dúvida que um agente vai responder.",
+  },
+  instagram: {
+    es:
+      "Cbank es una Tarjeta Visa Platinum que se recarga con USDT/USDC, usando Cuentas Bancarias en varios países de Latam, USA y Europa como \"rampa\" de Fiat a Crypto.\n\n" +
+      "$0 Emisión de Tarjeta\n0% Comisión por Depósito\n$0 Mantenimiento Mensual\n\n" +
+      "Podés crearte Cuentas Bancarias en minutos desde tu celular para enviar y recibir pagos en estos países: USA, UK, Europa, Argentina, Colombia, Brasil y México, en moneda local.\n\n" +
+      "Tu Tarjeta VISA USDT es tu billetera.\n\n" +
+      "Toda la info: https://linktr.ee/cbank.ws",
+    en:
+      "Cbank is a Visa Platinum Card you top up with USDT/USDC, using bank accounts in several countries across Latam, the US and Europe as a Fiat-to-Crypto \"ramp\".\n\n" +
+      "$0 card issuance\n0% deposit fee\n$0 monthly maintenance\n\n" +
+      "You can open bank accounts in minutes from your phone to send and receive payments in these countries: USA, UK, Europe, Argentina, Colombia, Brazil and Mexico, in local currency.\n\n" +
+      "Your VISA USDT Card is your wallet.\n\n" +
+      "Full info: https://linktr.ee/cbank.ws",
+    pt:
+      "O Cbank é um Cartão Visa Platinum recarregado com USDT/USDC, usando Contas Bancárias em vários países da América Latina, EUA e Europa como \"rampa\" de Fiat para Cripto.\n\n" +
+      "$0 emissão do cartão\n0% taxa de depósito\n$0 manutenção mensal\n\n" +
+      "Você pode abrir Contas Bancárias em minutos pelo celular para enviar e receber pagamentos nestes países: EUA, Reino Unido, Europa, Argentina, Colômbia, Brasil e México, em moeda local.\n\n" +
+      "Seu Cartão VISA USDT é sua carteira.\n\n" +
+      "Toda a info: https://linktr.ee/cbank.ws",
+  },
+};
+
+function cleanWelcomeTexts(texts) {
+  return {
+    es: ((texts && texts.es) || "").trim(),
+    en: ((texts && texts.en) || "").trim(),
+    pt: ((texts && texts.pt) || "").trim(),
+  };
+}
+
 // ---- Unanswered question log (free FAQ-learning loop) ------------------
 // When a customer asks something that doesn't match any FAQ (web free-text
 // or a WhatsApp message that isn't a menu number), we log it here instead of
@@ -602,28 +656,26 @@ function faqText(map, locale) {
 // same `faqs` list agents manage from the dashboard.
 const FAQS_INFO_LINK_LINE = "*Toda la Info Aca >> https://faqs.cbank.ws*";
 
+// menuFooter is boilerplate (not agent-editable) -- the actual greeting text
+// now lives in `welcomeMessages.whatsapp` (see above), managed live from the
+// dashboard.
 const WHATSAPP_MENU_COPY = {
   es: {
-    greeting:
-      "¡Hola! Soy el asistente virtual de cbank. Elegí una pregunta escribiendo su número, o escribí tu consulta y un agente te va a responder.",
     menuFooter: `\n\nEscribí *menu* en cualquier momento para volver a ver esta lista.\n\n${FAQS_INFO_LINK_LINE}`,
   },
   en: {
-    greeting:
-      "Hi! I'm cbank's virtual assistant. Pick a question by typing its number, or type your own question and an agent will reply.",
     menuFooter: `\n\nType *menu* anytime to see this list again.\n\n${FAQS_INFO_LINK_LINE}`,
   },
   pt: {
-    greeting:
-      "Olá! Sou o assistente virtual do cbank. Escolha uma pergunta digitando o número dela, ou escreva sua dúvida que um agente vai responder.",
     menuFooter: `\n\nDigite *menu* a qualquer momento para ver esta lista novamente.\n\n${FAQS_INFO_LINK_LINE}`,
   },
 };
 
 function buildWhatsAppMenuText(locale) {
   const copy = WHATSAPP_MENU_COPY[locale] || WHATSAPP_MENU_COPY.es;
+  const greeting = welcomeMessages.whatsapp[locale] || welcomeMessages.whatsapp.es;
   const lines = faqs.map((f, i) => `${i + 1}. ${faqText(f.question, locale)}`);
-  return `${copy.greeting}\n\n${lines.join("\n")}${copy.menuFooter}`;
+  return `${greeting}\n\n${lines.join("\n")}${copy.menuFooter}`;
 }
 
 // Same numbered FAQ list as the WhatsApp menu, but without the greeting —
@@ -798,31 +850,12 @@ function fetchInstagramProfile(igsid) {
 const FAQS_INFO_LINK_LINE_PLAIN = "Toda la Info Aca >> https://faqs.cbank.ws";
 
 // Marketing-style greeting sent once, the first time a customer DMs
-// @cbankcard — the FAQ menu (buildInstagramMenuText) follows right after as
-// a second message so they can still pick a numbered question.
-const INSTAGRAM_WELCOME_COPY = {
-  es:
-    "Cbank es una Tarjeta Visa Platinum que se recarga con USDT/USDC, usando Cuentas Bancarias en varios países de Latam, USA y Europa como \"rampa\" de Fiat a Crypto.\n\n" +
-    "$0 Emisión de Tarjeta\n0% Comisión por Depósito\n$0 Mantenimiento Mensual\n\n" +
-    "Podés crearte Cuentas Bancarias en minutos desde tu celular para enviar y recibir pagos en estos países: USA, UK, Europa, Argentina, Colombia, Brasil y México, en moneda local.\n\n" +
-    "Tu Tarjeta VISA USDT es tu billetera.\n\n" +
-    "Toda la info: https://linktr.ee/cbank.ws",
-  en:
-    "Cbank is a Visa Platinum Card you top up with USDT/USDC, using bank accounts in several countries across Latam, the US and Europe as a Fiat-to-Crypto \"ramp\".\n\n" +
-    "$0 card issuance\n0% deposit fee\n$0 monthly maintenance\n\n" +
-    "You can open bank accounts in minutes from your phone to send and receive payments in these countries: USA, UK, Europe, Argentina, Colombia, Brazil and Mexico, in local currency.\n\n" +
-    "Your VISA USDT Card is your wallet.\n\n" +
-    "Full info: https://linktr.ee/cbank.ws",
-  pt:
-    "O Cbank é um Cartão Visa Platinum recarregado com USDT/USDC, usando Contas Bancárias em vários países da América Latina, EUA e Europa como \"rampa\" de Fiat para Cripto.\n\n" +
-    "$0 emissão do cartão\n0% taxa de depósito\n$0 manutenção mensal\n\n" +
-    "Você pode abrir Contas Bancárias em minutos pelo celular para enviar e receber pagamentos nestes países: EUA, Reino Unido, Europa, Argentina, Colômbia, Brasil e México, em moeda local.\n\n" +
-    "Seu Cartão VISA USDT é sua carteira.\n\n" +
-    "Toda a info: https://linktr.ee/cbank.ws",
-};
-
+// @cbank.app -- the FAQ menu (buildInstagramMenuText) follows right after
+// as a second message so they can still pick a numbered question. The
+// actual text now lives in `welcomeMessages.instagram` (see above),
+// managed live from the dashboard.
 function buildInstagramWelcomeText(locale) {
-  return INSTAGRAM_WELCOME_COPY[locale] || INSTAGRAM_WELCOME_COPY.es;
+  return welcomeMessages.instagram[locale] || welcomeMessages.instagram.es;
 }
 
 const INSTAGRAM_MENU_COPY = {
@@ -1057,8 +1090,9 @@ app.post("/webhooks/instagram", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-  // FAQ list is global config, not per-session — send it to whoever just
-      // connected (widget or dashboard) right away.
+  // FAQ list and welcome messages are global config, not per-session -- send
+      // them to whoever just connected (widget or dashboard) right away.
+  socket.emit("welcome:list", welcomeMessages);
       socket.emit("faqs:list", faqs);
 
       // ---- Client (widget) events -----------------------------------------
@@ -1247,6 +1281,16 @@ socket.on("agent:faqs:delete", (id) => {
   faqs = faqs.filter((f) => f.id !== id);
   io.emit("faqs:list", faqs);
 });
+
+// Welcome message management -- one editable { es, en, pt } text per channel
+  // ("web" | "whatsapp" | "instagram"), edited from the dashboard's welcome
+  // modal. Broadcast to everyone (agents + any open widget) so the next
+  // greeting sent already reflects the change.
+  socket.on("agent:welcome:save", ({ channel, texts } = {}) => {
+    if (!welcomeMessages[channel]) return;
+    welcomeMessages[channel] = cleanWelcomeTexts(texts);
+    io.emit("welcome:list", welcomeMessages);
+  });
 
 socket.on("agent:close", (sessionId) => {
   const session = sessions.get(sessionId);
