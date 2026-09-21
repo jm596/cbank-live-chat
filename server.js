@@ -1024,15 +1024,17 @@ app.post("/webhooks/whatsapp", (req, res) => {
 // GET: Meta's one-time verification handshake when you register the webhook
 // URL for the Page (Meta for Developers → your App → Webhooks → Instagram).
 // Small status endpoint so the dashboard (and the Meta App Review screencast)
-// can show which Instagram professional account is connected — calls our
-// own /me on graph.facebook.com with the long-lived token.
+// can show which Instagram professional account is connected — with a Page
+// access token, /me resolves to the Facebook Page itself (no
+// profile_picture_url field there), so we fetch the Page's linked
+// instagram_business_account edge instead to get the real IG profile info.
 app.get("/api/instagram/status", (req, res) => {
   if (!instagramConfigured()) {
     return res.json({ connected: false });
   }
   https
     .get(
-      `https://graph.facebook.com/${INSTAGRAM_API_VERSION}/me?fields=id,username,name,profile_picture_url&access_token=${encodeURIComponent(
+      `https://graph.facebook.com/${INSTAGRAM_API_VERSION}/me?fields=instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(
         process.env.INSTAGRAM_ACCESS_TOKEN
       )}`,
       (apiRes) => {
@@ -1044,7 +1046,14 @@ app.get("/api/instagram/status", (req, res) => {
             if (parsed.error) {
               return res.json({ connected: false, error: parsed.error.message });
             }
-            res.json({ connected: true, ...parsed });
+            const igAccount = parsed.instagram_business_account;
+            if (!igAccount) {
+              return res.json({
+                connected: false,
+                error: "No Instagram business account linked to this Page",
+              });
+            }
+            res.json({ connected: true, ...igAccount });
           } catch (e) {
             res.json({ connected: false });
           }
