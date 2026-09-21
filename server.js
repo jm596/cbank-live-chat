@@ -210,6 +210,25 @@ function clearEscalationTimer(sessionId) {
   }
 }
 
+// Stamps "someone (client or agent) just did something in this chat" so we
+// can tell a genuinely idle conversation apart from one where a human agent
+// is actively working it. Call on every inbound/outbound message.
+function touchActivity(session) {
+  session.lastActivityAt = Date.now();
+}
+
+// Once a human agent has replied at least once, the automatic "waiting for
+// an agent" FAQ/menu fallback should stay quiet — a human is already on it.
+// It only comes back once the whole conversation (both sides) has actually
+// gone cold for ESCALATION_DELAY_MS, at which point we un-flag the session
+// so a still-unanswered message can escalate normally again.
+function refreshAgentEngagement(session) {
+  const idleMs = Date.now() - (session.lastActivityAt || 0);
+  if (session.agentEngaged && idleMs >= ESCALATION_DELAY_MS) {
+    session.agentEngaged = false;
+  }
+}
+
 function forwardQueryToOwnerWhatsApp(session, text) {
   const channelLabel =
     session.channel === "whatsapp" ? "WhatsApp" : session.channel === "instagram" ? "Instagram" : "Web";
@@ -655,6 +674,8 @@ function createWhatsAppSession(from, profileName) {
     messages: [],
     unread: 0,
     needsReply: false,
+    agentEngaged: false,
+    lastActivityAt: Date.now(),
     transcriptEmail: null,
   };
   sessions.set(id, session);
@@ -677,8 +698,10 @@ async function handleIncomingWhatsAppText(from, text, profileName) {
   let session = findWhatsAppSession(from);
   const isNewSession = !session;
   if (!session) session = createWhatsAppSession(from, profileName);
+  else refreshAgentEngagement(session);
 
 pushWhatsAppMessage(session, "client", text);
+touchActivity(session);
 
 const trimmed = text.trim();
   const isMenuCommand = /^(menu|menú|hi|hola|oi|start)$/i.test(trimmed);
@@ -703,7 +726,11 @@ try {
     session.needsReply = true;
     logUnansweredQuestion(session, trimmed);
     forwardQueryToOwnerWhatsApp(session, trimmed);
-    scheduleEscalation(session, trimmed);
+    if (session.agentEngaged) {
+      clearEscalationTimer(session.id);
+    } else {
+      scheduleEscalation(session, trimmed);
+    }
   }
 } catch (err) {
   console.error("[cbank] Failed to send WhatsApp reply:", err.message);
@@ -869,6 +896,8 @@ function createInstagramSession(igsid, profileName) {
     messages: [],
     unread: 0,
     needsReply: false,
+    agentEngaged: false,
+    lastActivityAt: Date.now(),
     transcriptEmail: null,
   };
   sessions.set(id, session);
@@ -894,9 +923,12 @@ async function handleIncomingInstagramText(igsid, text, profileName) {
   if (!session) {
     if (!profileName) profileName = await fetchInstagramProfile(igsid);
     session = createInstagramSession(igsid, profileName);
+  } else {
+    refreshAgentEngagement(session);
   }
 
   pushInstagramMessage(session, "client", text);
+  touchActivity(session);
 
   const trimmed = text.trim();
   const isMenuCommand = /^(menu|menú|hi|hola|oi|start)$/i.test(trimmed);
@@ -926,7 +958,11 @@ async function handleIncomingInstagramText(igsid, text, profileName) {
       session.needsReply = true;
       logUnansweredQuestion(session, trimmed);
       forwardQueryToOwnerWhatsApp(session, trimmed);
-      scheduleEscalation(session, trimmed);
+      if (session.agentEngaged) {
+        clearEscalationTimer(session.id);
+      } else {
+        scheduleEscalation(session, trimmed);
+      }
     }
   } catch (err) {
     console.error("[cbank] Failed to send Instagram reply:", err.message);
@@ -1082,6 +1118,8 @@ io.on("connection", (socket) => {
                     messages: [],
                     unread: 0,
                     needsReply: false,
+                    agentEngaged: false,
+                    lastActivityAt: Date.now(),
                     transcriptEmail: null,
                   });
                 } else {
@@ -1126,12 +1164,21 @@ io.on("connection", (socket) => {
                   text: text.trim(),
                   at: new Date().toISOString(),
                 };
+        refreshAgentEngagement(session);
         session.messages.push(message);
         session.unread = (session.unread || 0) + 1;
         session.needsReply = true;
+        touchActivity(session);
         logUnansweredQuestion(session, message.text);
         forwardQueryToOwnerWhatsApp(session, message.text);
-        scheduleEscalation(session, message.text);
+        if (session.agentEngaged) {
+          // A human agent is already actively handling this chat — don't
+          // let the automatic FAQ/waiting fallback barge in on every
+          // message; it only comes back once the chat goes fully idle.
+          clearEscalationTimer(sessionId);
+        } else {
+          scheduleEscalation(session, message.text);
+        }
 
                 io.to(`session-${sessionId}`).emit("message:new", message);
         broadcastSessionList();
@@ -1193,6 +1240,8 @@ io.on("connection", (socket) => {
                 };
         session.messages.push(message);
         session.needsReply = false;
+        session.agentEngaged = true;
+        touchActivity(session);
         clearEscalationTimer(sessionId);
 
                 io.to(`session-${sessionId}`).emit("message:new", message);
