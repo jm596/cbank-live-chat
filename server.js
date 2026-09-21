@@ -235,7 +235,7 @@ function logUnansweredQuestion(session, text) {
 // WhatsApp with the pending query so it doesn't get missed. One timer per
 // session; every new unanswered client message restarts the clock, and it's
 // cancelled the moment an agent actually replies or closes the chat.
-const ESCALATION_DELAY_MS = 10 * 1000;
+const ESCALATION_DELAY_MS = 2 * 60 * 1000;
 const OWNER_WHATSAPP = "59897982374";
 const unansweredTimers = new Map(); // sessionId -> Timeout
 
