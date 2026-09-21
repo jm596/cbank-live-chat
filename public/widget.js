@@ -179,8 +179,7 @@
     faqs: [],
   };
 
-  function t(key, vars) {
-    var str = (I18N[state.locale] && I18N[state.locale][key]) || I18N.en[key] || key;
+  function applyVars(str, vars) {
     if (vars) {
       Object.keys(vars).forEach(function (k) {
         str = str.replace("{" + k + "}", vars[k]);
@@ -189,6 +188,22 @@
     return str;
   }
 
+  function t(key, vars) {
+    var str = (I18N[state.locale] && I18N[state.locale][key]) || I18N.en[key] || key;
+    return applyVars(str, vars);
+  }
+  
+  // Server-managed welcome text (agents edit it live from the dashboard),
+  // received over the socket -- see the welcome:list handler below. Falls
+  // back to the built-in I18N.welcomeMessage above until it arrives, or if
+  // the server hasn't got a version for the current locale.
+  var serverWelcome = null;
+  function welcomeMessageText() {
+    var fromServer = serverWelcome && serverWelcome[state.locale];
+    var raw = fromServer || t("welcomeMessage");
+    return applyVars(raw, { name: state.profile.name });
+  }
+  
   function safeParse(json) {
     try {
       return json ? JSON.parse(json) : null;
@@ -286,13 +301,17 @@
         maybeShowWelcomeMenu();
       });
 
+      socket.on("welcome:list", function (data) {
+        serverWelcome = (data && data.web) || null;
+      });
+      
       socket.on("client:joined", function (data) {
         sessionId = data.sessionId;
         localStorage.setItem(SESSION_KEY, sessionId);
         joined = true;
         ui.messagesEl.innerHTML = "";
         if (data.messages.length === 0) {
-          appendMessage(ui, "agent", t("welcomeMessage", { name: state.profile.name }), new Date().toISOString());
+          appendMessage(ui, "agent", welcomeMessageText(), new Date().toISOString());
           maybeShowWelcomeMenu();
         } else {
           data.messages.forEach(function (m) {

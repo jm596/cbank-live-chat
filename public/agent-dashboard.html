@@ -20,6 +20,8 @@
   #manage-faqs-btn:hover { background: rgba(255,255,255,0.25); }
   #unanswered-btn { margin-top: 8px; margin-left: 8px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4); color: #fff; font-size: 12px; font-weight: 600; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
   #unanswered-btn:hover { background: rgba(255,255,255,0.25); }
+  #manage-welcome-btn { margin-top: 8px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4); color: #fff; font-size: 12px; font-weight: 600; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  #manage-welcome-btn:hover { background: rgba(255,255,255,0.25); }
 
   #filter-tabs { display: flex; border-bottom: 1px solid #e2e6ee; background: #fafbfd; }
   .filter-tab { flex: 1; text-align: center; padding: 10px 4px; font-size: 12.5px; font-weight: 600; color: #888; cursor: pointer; border-bottom: 2px solid transparent; }
@@ -37,6 +39,10 @@
   .channel-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 1px 6px; border-radius: 4px; margin-right: 6px; vertical-align: middle; }
   .channel-whatsapp { background: #e7f8ee; color: #1e8a5f; }
   .channel-instagram { background: #fce8f3; color: #c4267b; }
+  .device-tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.2px; padding: 1px 6px; border-radius: 4px; margin-right: 6px; vertical-align: middle; }
+  .device-apple { background: #eef0f2; color: #3a3a3c; }
+  .device-android { background: #e9f7e6; color: #3a8a2f; }
+  .device-desktop { background: #eef2fb; color: #4a5a8a; }
   .unread-dot { background: #e0263a; color: #fff; font-size: 11px; font-weight: 700; min-width: 18px; height: 18px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; }
   #empty-list { padding: 24px 18px; font-size: 13px; color: #999; }
 
@@ -132,6 +138,28 @@
   .unanswered-card .unanswered-actions .promote-btn:hover { background: #eef2fb; }
   .unanswered-card .unanswered-actions .discard-btn { color: #b3261e; border-color: #f3c9c5; }
   .unanswered-card .unanswered-actions .discard-btn:hover { background: #fdeeee; }
+
+  /* ---- Welcome message modal ---- */
+  #welcome-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(20,26,40,0.45); z-index: 1000; align-items: center; justify-content: center; }
+  #welcome-modal-overlay.open { display: flex; }
+  #welcome-modal { width: 640px; max-width: calc(100vw - 40px); max-height: calc(100vh - 60px); background: #fff; border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+  #welcome-modal-header { background: #0b3d91; color: #fff; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; }
+  #welcome-modal-header .title { font-weight: 700; font-size: 15px; }
+  #welcome-modal-header .subtitle { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+  #welcome-modal-close { background: transparent; border: none; color: #fff; font-size: 22px; cursor: pointer; line-height: 1; }
+  #welcome-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; background: #f7f9fd; }
+
+  .welcome-card { background: #fff; border: 1px solid #e2e6ee; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .welcome-card .welcome-card-title { font-weight: 700; font-size: 13.5px; margin-bottom: 2px; }
+  .welcome-card .welcome-card-hint { font-size: 11.5px; color: #999; margin-bottom: 8px; }
+  .welcome-edit-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .welcome-edit-col label { font-size: 10.5px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin: 0 0 3px; }
+  .welcome-edit-col textarea { width: 100%; border: 1px solid #dcdfe6; border-radius: 6px; padding: 6px 8px; font-size: 12px; font-family: inherit; outline: none; resize: vertical; min-height: 90px; }
+  .welcome-edit-col textarea:focus { border-color: #0b3d91; }
+  .welcome-card-actions { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+  .welcome-card-actions .save-btn { background: #0b3d91; color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .welcome-card-actions .save-btn:hover { background: #092f70; }
+  .welcome-card-actions .saved-hint { font-size: 12px; color: #1e8a5f; font-weight: 600; }
   </style>
  </head>
  <body>
@@ -142,6 +170,7 @@
      <div class="subtitle">Agent dashboard</div>
      <button id="manage-faqs-btn" type="button">❓ Gestionar preguntas frecuentes</button>
      <button id="unanswered-btn" type="button">🧠 Preguntas sin responder</button>
+     <button id="manage-welcome-btn" type="button">&#x1F4AC; Mensajes de bienvenida</button>
      <div id="instagram-status" style="display:none; align-items:center; gap:8px; margin-top:10px; padding:8px 10px; background:#fce8f3; border-radius:8px; font-size:13px;">
       <img id="instagram-status-pic" src="" alt="" style="width:24px; height:24px; border-radius:50%; display:none;" />
       <span id="instagram-status-text" style="color:#c4267b; font-weight:600;"></span>
@@ -193,6 +222,21 @@
    </div>
   </div>
 
+  <div id="welcome-modal-overlay">
+   <div id="welcome-modal">
+    <div id="welcome-modal-header">
+     <div>
+      <div class="title">Mensajes de bienvenida</div>
+      <div class="subtitle">El primer mensaje que ve un contacto nuevo en cada canal, en ES / EN / PT</div>
+     </div>
+     <button id="welcome-modal-close" aria-label="Cerrar">×</button>
+    </div>
+    <div id="welcome-modal-body">
+     <div id="welcome-list"></div>
+    </div>
+   </div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script>
    const socket = io();
@@ -224,6 +268,10 @@
 
    let unanswered = [];
 
+   // { web: {es,en,pt}, whatsapp: {es,en,pt}, instagram: {es,en,pt} } — kept
+   // in sync live via the `welcome:list` socket event (same pattern as faqs).
+   let welcomeMessages = { web: { es: "", en: "", pt: "" }, whatsapp: { es: "", en: "", pt: "" }, instagram: { es: "", en: "", pt: "" } };
+
    const sessionListEl = document.getElementById("session-list");
    const mainEl = document.getElementById("main");
    const filterTabs = document.querySelectorAll(".filter-tab");
@@ -231,6 +279,8 @@
    const faqListEl = document.getElementById("faq-list");
    const unansweredModalOverlay = document.getElementById("unanswered-modal-overlay");
    const unansweredListEl = document.getElementById("unanswered-list");
+   const welcomeModalOverlay = document.getElementById("welcome-modal-overlay");
+   const welcomeListEl = document.getElementById("welcome-list");
 
    filterTabs.forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -293,6 +343,11 @@
     renderUnansweredManager();
    });
 
+   socket.on("welcome:list", (data) => {
+    welcomeMessages = data || welcomeMessages;
+    renderWelcomeManager();
+   });
+
    socket.on("session:reopened", () => {
     // No-op here; sessions:list broadcast right after already refreshes state.
    });
@@ -301,6 +356,19 @@
     if (filter === "open") return sessions.filter((s) => s.status !== "closed");
     if (filter === "closed") return sessions.filter((s) => s.status === "closed");
     return sessions;
+   }
+
+   // Only the web widget can actually tell us the visitor's OS (it reads
+   // navigator.userAgent client-side — see detectDevice() in widget.js).
+   // WhatsApp and Instagram's APIs never expose the sender's device, so we
+   // don't fabricate a tag for those channels.
+   function deviceFamilyTag(session) {
+    if (!session || (session.channel && session.channel !== "web")) return "";
+    const d = session.device || "";
+    if (/iOS|macOS/i.test(d)) return '<span class="device-tag device-apple">&#x1F34E; Apple</span>';
+    if (/Android/i.test(d)) return '<span class="device-tag device-android">&#x1F916; Android</span>';
+    if (/Windows|Linux/i.test(d)) return '<span class="device-tag device-desktop">&#x1F4BB; Desktop</span>';
+    return "";
    }
 
    function renderSessionList() {
@@ -325,7 +393,7 @@
      item.innerHTML = `
      <div class="name"><span>${escapeHtml(s.name)}</span>${unreadBadge}</div>
      <div class="preview">${escapeHtml(s.lastMessage || "No messages yet")}</div>
-     <div class="subline">${channelTag}${location}</div>
+     <div class="subline">${channelTag}${deviceFamilyTag(s)}${location}</div>
      ${closedTag}
      `;
      sessionListEl.appendChild(item);
@@ -384,6 +452,7 @@
      : "";
 
     const deviceLine = session && session.device ? escapeHtml(session.device) : "";
+    const deviceTag = deviceFamilyTag(session);
 
     const channelTag = session && session.channel === "whatsapp" ? `<span class="channel-tag channel-whatsapp">WhatsApp</span>` : session && session.channel === "instagram" ? `<span class="channel-tag channel-instagram">Instagram</span>` : "";
 
@@ -392,7 +461,7 @@
     <div>
     <div class="title">${channelTag}${escapeHtml(session ? session.name : "Conversation")}</div>
     <div class="meta meta-line">${contactLine}</div>
-    <div class="meta meta-line">${locationLine}${deviceLine ? " · " + deviceLine : ""}</div>
+    <div class="meta meta-line">${deviceTag}${locationLine}${deviceLine ? " · " + deviceLine : ""}</div>
     </div>
     <div>
     <button id="close-btn" ${session && session.status === "closed" ? "disabled" : ""}>
@@ -691,6 +760,74 @@
 
     if (discardBtn) {
      socket.emit("agent:unanswered:dismiss", discardBtn.dataset.id);
+    }
+   });
+
+   // ---- Welcome messages ---------------------------------------------------
+   document.getElementById("manage-welcome-btn").addEventListener("click", () => {
+    welcomeModalOverlay.classList.add("open");
+    renderWelcomeManager();
+   });
+   document.getElementById("welcome-modal-close").addEventListener("click", () => {
+    welcomeModalOverlay.classList.remove("open");
+   });
+   welcomeModalOverlay.addEventListener("click", (e) => {
+    if (e.target === welcomeModalOverlay) welcomeModalOverlay.classList.remove("open");
+   });
+
+   const WELCOME_CHANNELS = [
+    { key: "web", title: "Widget web (cbank.ws)", hint: "Se muestra una sola vez, al abrir una conversación nueva. Podés usar {name} para el nombre del visitante." },
+    { key: "whatsapp", title: "WhatsApp", hint: "Se envía junto con el menú de preguntas frecuentes, al primer contacto y cada vez que alguien escribe \"menu\"." },
+    { key: "instagram", title: "Instagram", hint: "Se envía una sola vez, antes del menú de preguntas frecuentes, al primer DM de un contacto nuevo." },
+   ];
+
+   function welcomeCardHtml(channel) {
+    const texts = (welcomeMessages && welcomeMessages[channel.key]) || { es: "", en: "", pt: "" };
+    const langs = [["es", "Español"], ["en", "English"], ["pt", "Português"]];
+    const cols = langs
+    .map(
+     ([code, label]) => `
+     <div class="welcome-edit-col">
+     <label>${label}</label>
+     <textarea data-channel="${channel.key}" data-lang="${code}">${escapeHtml(texts[code])}</textarea>
+     </div>`
+     )
+    .join("");
+
+    return `
+    <div class="welcome-card" data-channel-card="${channel.key}">
+    <div class="welcome-card-title">${escapeHtml(channel.title)}</div>
+    <div class="welcome-card-hint">${escapeHtml(channel.hint)}</div>
+    <div class="welcome-edit-grid">${cols}</div>
+    <div class="welcome-card-actions">
+    <button type="button" class="save-btn" data-action="save-welcome" data-channel="${channel.key}">Guardar</button>
+    <span class="saved-hint" data-saved-hint="${channel.key}" style="display:none;">Guardado ✓</span>
+    </div>
+    </div>
+    `;
+   }
+
+   function renderWelcomeManager() {
+    if (!welcomeModalOverlay.classList.contains("open")) return;
+    welcomeListEl.innerHTML = WELCOME_CHANNELS.map(welcomeCardHtml).join("");
+   }
+
+   welcomeListEl.addEventListener("click", (e) => {
+    const saveBtn = e.target.closest('[data-action="save-welcome"]');
+    if (!saveBtn) return;
+    const channel = saveBtn.dataset.channel;
+    const card = welcomeListEl.querySelector(`[data-channel-card="${channel}"]`);
+    if (!card) return;
+    const texts = { es: "", en: "", pt: "" };
+    card.querySelectorAll("textarea[data-lang]").forEach((ta) => {
+     texts[ta.dataset.lang] = ta.value;
+    });
+    socket.emit("agent:welcome:save", { channel, texts });
+
+    const hint = card.querySelector(`[data-saved-hint="${channel}"]`);
+    if (hint) {
+     hint.style.display = "inline";
+     setTimeout(() => { hint.style.display = "none"; }, 2000);
     }
    });
 
